@@ -1,0 +1,56 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: #111;
+    color: #fff;
+    font-family: Arial, sans-serif;
+}
+
+.container {
+    padding: 20px;
+}
+
+h1 {
+    margin-bottom: 20px;
+}
+
+.camera-grid {
+    display: grid;
+
+    grid-template-columns:
+        repeat(auto-fit, minmax(400px, 1fr));
+
+    gap: 20px;
+}
+
+.camera-card {
+    background: #1e1e1e;
+
+    border-radius: 12px;
+
+    overflow: hidden;
+
+    padding: 12px;
+}
+
+.camera-card h2 {
+    margin-bottom: 10px;
+
+    font-size: 18px;
+}
+
+.camera-card img {
+    width: 100%;
+
+    height: auto;
+
+    display: block;
+
+    border-radius: 8px;
+
+    background: black;
+}
