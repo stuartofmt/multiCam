@@ -10,6 +10,7 @@ import time
 import threading
 
 from typing import Dict, Optional
+from config import DEFAULT_JPEG_QUALITY
 
 
 class CameraStream:
@@ -25,6 +26,10 @@ class CameraStream:
         height: Optional[int] = None,
         api_preference=None,
         copy_frame: bool = False,
+        brightness: float = 1.0,
+        contrast: float = 1.0,
+        focus: float = 1.0,
+        balance: float = 1.0,
     ):
 
         self.source = source
@@ -39,8 +44,13 @@ class CameraStream:
 
         self.copy_frame = copy_frame
 
-        self.capture = None
-        self.thread = None
+        self.brightness = brightness
+        self.contrast = contrast
+        self.focus = focus
+        self.balance = balance
+
+        self.capture: Optional[cv2.VideoCapture] = None
+        self.thread: Optional[threading.Thread] = None
 
         self.running = False
 
@@ -48,6 +58,7 @@ class CameraStream:
 
         self.frame = None
         self.timestamp = 0.0
+        self.cached_jpeg: Optional[bytes] = None
 
     def start(self):
         """
@@ -164,15 +175,37 @@ class CameraStream:
                 current_time + self.frame_interval
             )
 
+            if self.capture is None:
+                raise RuntimeError(
+                    "Camera capture is not initialized"
+                )
+
             grabbed, frame = self.capture.read()
 
             if not grabbed:
                 continue
 
             with self.lock:
-
                 self.frame = frame
                 self.timestamp = time.time()
+                local_frame = self.frame.copy() if self.copy_frame else self.frame
+
+            # Encode JPEG in background thread to cache latest JPEG bytes
+            try:
+                success, encoded = cv2.imencode(
+                    ".jpg",
+                    local_frame,
+                    [int(cv2.IMWRITE_JPEG_QUALITY), DEFAULT_JPEG_QUALITY],
+                )
+
+                if success:
+                    jpg_bytes = encoded.tobytes()
+                    with self.lock:
+                        self.cached_jpeg = jpg_bytes
+            except Exception:
+                # Encoding failures should not stop the capture loop
+                pass
+
 
     def get_frame(self):
         """
@@ -184,10 +217,24 @@ class CameraStream:
             if self.frame is None:
                 return None
 
-            if self.copy_frame:
-                return self.frame.copy()
+            frame = self.frame.copy() if self.copy_frame else self.frame
 
-            return self.frame
+            # Apply image adjustments
+            if self.contrast != 1.0:
+                frame = cv2.convertScaleAbs(frame, alpha=self.contrast, beta=0)
+
+            if self.brightness != 1.0:
+                frame = cv2.convertScaleAbs(frame, alpha=1.0, beta=(self.brightness - 1.0) * 50)
+
+            return frame
+
+    def get_jpeg(self):
+        """
+        Return cached JPEG bytes for the latest frame.
+        """
+
+        with self.lock:
+            return self.cached_jpeg
 
     def get_frame_with_timestamp(self):
         """
@@ -241,6 +288,10 @@ class MultiCameraManager:
         height: Optional[int] = None,
         api_preference=None,
         copy_frame: bool = False,
+        brightness: float = 1.0,
+        contrast: float = 1.0,
+        focus: float = 1.0,
+        balance: float = 1.0,
     ):
 
         if name in self.cameras:
@@ -256,6 +307,10 @@ class MultiCameraManager:
             height=height,
             api_preference=api_preference,
             copy_frame=copy_frame,
+            brightness=brightness,
+            contrast=contrast,
+            focus=focus,
+            balance=balance,
         )
 
     def start(self):
@@ -286,6 +341,19 @@ class MultiCameraManager:
             )
 
         return self.cameras[name].get_frame()
+
+    def get_jpeg(self, name: str):
+        """
+        Retrieve latest cached JPEG bytes for a camera.
+        """
+
+        if name not in self.cameras:
+
+            raise KeyError(
+                f"Unknown camera '{name}'"
+            )
+
+        return self.cameras[name].get_jpeg()
 
     def get_frame_with_timestamp(self, name: str):
         """
