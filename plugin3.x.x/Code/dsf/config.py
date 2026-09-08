@@ -1,3 +1,5 @@
+
+
 from pathlib import Path
 
 # ============================================================
@@ -30,7 +32,3 @@ DEFAULT_BALANCE = 1.0
 DEFAULT_JPEG_QUALITY = 95
 
 
-# --- ML / Model Config ---
-MODEL_REPO_ID: str = "oliverbravery/printguard"
-MODEL_FILES: List[str] = ["model.onnx", "opt.json", "prototypes.pkl"]
-MODEL_DIR: Path = BASE_DIR / "models"

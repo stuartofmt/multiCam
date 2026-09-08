@@ -22,6 +22,7 @@ from config import (
     DEFAULT_BRIGHTNESS,
     DEFAULT_FOCUS,
     DEFAULT_BALANCE,
+    DEFAULT_JPEG_QUALITY
 )
 from multi_camera import MultiCameraManager, is_valid_jpeg_bytes
 from typing import Optional
@@ -49,9 +50,9 @@ class CameraConfig(BaseModel):
 # Streaming Settings
 # ============================================================
 
-STREAM_FPS = 5
+STREAM_FPS = DEFAULT_CAMERA_FPS
 STREAM_INTERVAL = 1.0 / STREAM_FPS
-JPEG_QUALITY = 95
+JPEG_QUALITY = DEFAULT_JPEG_QUALITY
 
 # ============================================================
 # FastAPI App

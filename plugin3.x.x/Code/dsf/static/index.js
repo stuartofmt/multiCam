@@ -18,7 +18,7 @@ async function loadCameras() {
 
         const img = document.createElement("img");
 
-        img.src = `/streaming/${cameraName}`;
+        img.src = `/${cameraName}/stream`;
         img.alt = cameraName;
 
         card.appendChild(title);

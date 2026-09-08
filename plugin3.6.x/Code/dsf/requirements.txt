@@ -1,4 +1,0 @@
-fastapi
-httpx
-uvicorn[standard]
-opencv-python-headless

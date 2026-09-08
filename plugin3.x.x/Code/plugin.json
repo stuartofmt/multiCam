@@ -1,0 +1,15 @@
+{
+    "id": "multiCam",
+    "name": "multiCam",
+    "author": "Stuartofmt",
+    "version": "0.1",
+    "license": "GPL-2.0-or-later",
+    "homepage": "https://github.com/stuartofmt",
+	"sbcRequired": true,
+	"sbcDsfVersion": "3",
+	"sbcExecutable": "multiCam.py",
+	"sbcExecutableArguments": "/opt/dsf/sd/sys/multiCam/multiCam.config",
+	"sbcOutputRedirected": false,
+	"sbcPermissions": ["commandExecution","networkAccess", "readSystem","writeSystem", "fileSystemAccess", "webCamAccess"],
+	"sbcPythonDependencies": ["--verbose","requirements.txt"]
+ }

@@ -1,21 +1,44 @@
-VENV_DIR="./venv"
-PLUGIN_VERSION="plugin3.6.x"
-# make sure we are at the system python level
-if [ -d "$VENV_DIR" ]
+#!/bin/bash
+#
+# Create venv for the plugin
+# placed in the top level of the plugin path
+# uses the manifest file to determine modules to be installed
+pluginName="multiCam"
+pluginVersion="plugin3.x.x"
+baseDir="/home/stuart/DWC"
+
+pluginDir="$baseDir/Plugins/$pluginName/$pluginVersion/Code"
+
+# Venv needs to be in the plugin dir
+# To satisfy pipINstall requiremets for the location of requirements.txt (if used)
+venvDir=$pluginDir
+
+manifestFile=$pluginDir/plugin.json
+
+# Use pipInstall to create the venv and install dependencies
+# Same method as used for plugins
+pipInstall="/home/stuart/DWC/Plugins/pipInstall/Version2/pipInstall2.py"
+
+# Make sure we are starting cleanly, remove venv if it exists
+
+if [ -d "$venvDir/venv" ]
     then
-    echo 'Deactivating venv'
-    source ./venv/bin/activate
+    echo "Removing existing venv"
+    source $venvDir/venv/bin/activate
     deactivate
-    echo 'Removing venv'
-    rm -rf $VENV_DIR
+    rm -rf $venvDir/venv
 fi
+
 #Create Venv if it does not exist
-if [ ! -d "$VENV_DIR" ]
+if [ ! -d "$venvDir/venv" ]
     then
-		echo 'Creating new venv'
-        python -m venv $VENV_DIR --clear --system-site-packages --upgrade-deps
+		echo "Creating fresh venv in $venvDir"
+        echo "Using Manifest $manifestFile"
+
+        python $pipInstall -m $manifestFile -p  $venvDir
 
 fi
-source ./venv/bin/activate
-echo 'Installing pip modules'
-python -m pip install -r ./$PLUGIN_VERSION/Code/dsf/requirements.txt
+
+echo "source $venvDir/venv/bin/activate"
+
+
