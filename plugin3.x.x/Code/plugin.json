@@ -6,10 +6,10 @@
     "license": "GPL-2.0-or-later",
     "homepage": "https://github.com/stuartofmt",
 	"sbcRequired": true,
-	"sbcDsfVersion": ">3.6.0",
+	"sbcDsfVersion": "3",
 	"sbcExecutable": "multiCam.py",
 	"sbcExecutableArguments": "/opt/dsf/sd/sys/multiCam/multiCam.config",
 	"sbcOutputRedirected": false,
-	"sbcPermissions": ["commandExecution", "objectModelReadWrite", "networkAccess", "webcamAccess", "fileSystemAccess","launchProcesses", "manageUserSessions"],
+	"sbcPermissions": ["networkAccess", "webcamAccess", "fileSystemAccess"],
 	"sbcPythonDependencies": ["--verbose","requirements.txt"]
  }

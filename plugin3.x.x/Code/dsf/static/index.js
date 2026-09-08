@@ -1,8 +1,12 @@
 async function loadCameras() {
 
+    console.warn("Loading current camera UI script");
+
     const response = await fetch("/api/cameras");
 
     const data = await response.json();
+
+    console.warn("Cameras received:", data.cameras);
 
     const grid = document.getElementById("camera-grid");
 
@@ -14,8 +18,10 @@ async function loadCameras() {
         card.className = "camera-card";
 
         const title = document.createElement("h2");
-        title.innerText = cameraName;
-
+        const streamUrl = new URL(`/${cameraName}/stream`, window.location.href);
+        const snapshotUrl = new URL(`/${cameraName}/snapshot`, window.location.href);
+        title.innerText = `${cameraName}\nStream: ${streamUrl.href}\nSnapshot: ${snapshotUrl.href}`;
+        console.warn(`Camera: ${cameraName}, Stream URL: ${streamUrl.href}, Snapshot URL: ${snapshotUrl.href}`);
         const img = document.createElement("img");
 
         img.src = `/${cameraName}/stream`;

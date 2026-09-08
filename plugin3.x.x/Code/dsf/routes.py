@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.requests import Request
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from config import (
     STATIC_DIR,
@@ -59,6 +60,20 @@ JPEG_QUALITY = DEFAULT_JPEG_QUALITY
 # ============================================================
 
 app = FastAPI()
+
+
+class NoCacheStaticMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+
+        if request.url.path == "/" or request.url.path == "/index" or request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+
+        return response
+
+
+app.add_middleware(NoCacheStaticMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
