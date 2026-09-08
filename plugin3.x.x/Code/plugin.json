@@ -10,6 +10,6 @@
 	"sbcExecutable": "multiCam.py",
 	"sbcExecutableArguments": "/opt/dsf/sd/sys/multiCam/multiCam.config",
 	"sbcOutputRedirected": false,
-	"sbcPermissions": ["commandExecution","networkAccess", "readSystem","writeSystem", "fileSystemAccess", "webCamAccess"],
+	"sbcPermissions": ["commandExecution", "objectModelReadWrite", "networkAccess", "webcamAccess", "fileSystemAccess","launchProcesses", "manageUserSessions"],
 	"sbcPythonDependencies": ["--verbose","requirements.txt"]
  }
