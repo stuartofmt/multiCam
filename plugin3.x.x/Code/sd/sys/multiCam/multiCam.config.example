@@ -9,7 +9,7 @@
 # --------------------------------------------------------
 # This section specifies the main configuration
 # A minimal configuration requires
-# [UI] PORT
+# [UI] and [CAMERAS]
 # --------------------------------------------------------
 
 [UI]
