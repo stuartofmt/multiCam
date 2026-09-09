@@ -322,18 +322,27 @@ class MultiCameraManager:
                 f"Camera '{name}' already exists"
             )
 
-        self.cameras[name] = CameraStream(
-            source=source,
-            fps=fps,
-            width=width,
-            height=height,
-            api_preference=api_preference,
-            copy_frame=copy_frame,
-            brightness=brightness,
-            contrast=contrast,
-            focus=focus,
-            balance=balance,
-        )
+        if source == "picamera2":
+            from picam import Picamera2Stream
+            self.cameras[name] = Picamera2Stream(
+                fps=fps,
+                width=width,
+                height=height,
+                copy_frame=copy_frame,
+            )
+        else:
+            self.cameras[name] = CameraStream(
+                source=source,
+                fps=fps,
+                width=width,
+                height=height,
+                api_preference=api_preference,
+                copy_frame=copy_frame,
+                brightness=brightness,
+                contrast=contrast,
+                focus=focus,
+                balance=balance,
+            )
 
     def start(self):
         """

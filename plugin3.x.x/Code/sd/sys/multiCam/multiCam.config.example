@@ -16,6 +16,7 @@
 # Settings for UI components
 # Accessed at either http://localhost or http://<DUETIP>
 # PORT cannot conflict with other apps / plugins / or DWC
+# PORT must be between 1024 and 65535
 # Mandatory e.g. PORT = 8001
 
 PORT = 
@@ -29,12 +30,14 @@ PORT =
 ;LEVEL =
 
 [CAMERAS]
-# for ech camera enter the name and source as name=source
-@ Must have at least one
-# e.g.  Cam1=/dev/video0
-#       Cam2=/dev/video2
+# for ech camera enter the name and source
+# as name=source
+# e.g.  Cam1= /dev/video0
 #       IP Camera=http://192.168.30.31:8081
 
-;name1=source1
-;name2=source2
+[PICAMERAS]
+# Each entry adds one Picamera2 stream to the same camera manager.
+# The value is reserved for the camera index and is currently ignored.
+PiCam=0
+
 

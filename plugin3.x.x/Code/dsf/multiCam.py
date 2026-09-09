@@ -34,22 +34,22 @@ def getIP(port):
 			s.connect(('10.255.255.255', 1))  # doesn't even have to be reachable
 			this_ip_address = s.getsockname()[0]
 		except Exception as e:
-			logger.warning(f'''Make sure IP address {ip_address} is reachable and unique''')
-			logger.warning(f'''{e}''')
+			logger.critical(f'''Unknown error trying to get the local IP address''')
+			logger.critical(f'''{e}''')
+			s.close()
+			force_quit(1)
 		finally:
 			s.close()
 
 		# Check that the port is available
 		try:
 			sock = socket.socket()
-		except Exception as e:
-			logger.critical(f'''Unknown error trying to open a socket''')
-			logger.critical(f'''{e}''')
-			force_quit(1)  
-		finally:
 			if sock.connect_ex((this_ip_address, port)) == 0:
-				logger.critical(f'''Port {port} is already in use.''')
-				force_quit(1)
+				raise Exception(f'''Port {port} is already in use.''')
+		except Exception as e:
+			logger.critical(f'''{e}''')
+			sock.close()
+			force_quit(1)  
 	else:
 		logger.critical('No port number was provided - terminating the program')
 		force_quit(1)
@@ -65,6 +65,48 @@ def sig_handler(signum, frame):
 	signame = signal.Signals(signum).name
 	logger.info(f'Shutting down.  Recieved signal {signame} ({signum})')
 	force_quit(0)
+
+import subprocess
+import re
+
+def list_cameras():
+	try:	
+		result = subprocess.run(
+			["ls", "-l", "/dev/v4l/by-id/"],
+			capture_output=True,
+			text=True
+		)
+
+		if result.returncode != 0:
+			raise RuntimeError(f"ls -l /dev/v4l/by-id/ failed: {result.stderr.strip()}")
+
+		camera_results = [f"\n", "-" * 95]
+		
+		# Process the text line by line
+		for line in result.stdout.strip().split('\n'):
+			# Skip empty lines or total count lines
+			if not line or line.startswith('total'):
+				continue
+				
+			# Regex to capture the symlink name and the video index it points to
+			# Looks for the filename before '->' and the 'videoX' at the end
+			match = re.search(r'([^/\s]+)\s+->\s+.*/video(\d+)', line)
+			
+			if match:
+				symlink_name = match.group(1)
+				video_num = int(match.group(2))
+				
+				# Filter for even numbers only
+				if video_num % 2 == 0:
+					device_node = f"/dev/video{video_num}"
+					camera_results.append(f"{device_node:<12} | {symlink_name:<80}")
+		camera_results.append("\n")
+		logger.info("\n".join(camera_results))
+
+	except Exception as e:
+		logger.critical(f"Error listing cameras")
+		logger.critical(f"{e}")
+		force_quit(1)
 
 if __name__ == "__main__":
 
@@ -84,10 +126,13 @@ if __name__ == "__main__":
 	# Create a logfile
 	script_name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
 
-	setup_log(progName,LOGFILENAME)
+	if not setup_log(progName,LOGFILENAME):
+		print(f"Failed to setup logging to {LOGFILENAME}. Please ensure the file is writable.")
+		sys.exit(1)
 
 	from logger_module import logger # Need to import after setup_logging is called
-	logger.info(f'''{progName} -- {progVersion}''')
+	logger.info(f'''Log file for {progName} -- {progVersion}''')
+	list_cameras()
 
 	from get_config import parse_config
 
@@ -96,7 +141,7 @@ if __name__ == "__main__":
 		force_quit(1)
 
 	# Can now get config parameters
-	from get_config import (UI, LOGGING, CAMERAS)
+	from get_config import (UI, LOGGING, CAMERAS, PICAMERAS)
 
 	'''
 	for camera_name, source in CAMERAS.__dict__.items():
@@ -119,13 +164,26 @@ if __name__ == "__main__":
 			log_config=None
 		)
 
-	server_thread = threading.Thread(target=run_server, daemon=False)
+	server_thread = threading.Thread(target=run_server, daemon=True)
 	server_thread.start()
 
 	logger.info("Waiting for server to be ready")
 	time.sleep(2)
 
 	with httpx.Client() as client:
+		for camera_name in PICAMERAS.__dict__:
+			try:
+				response = client.post(
+					f"http://{this_ip_address}:{UI.PORT}/api/add-camera",
+					json={
+						"name": camera_name,
+						"source": "picamera2",
+					},
+				)
+				logger.info(f"Added PiCamera {camera_name}")
+			except Exception as e:
+				logger.error(f"Error adding PiCamera {camera_name}: {e}")
+
 		for camera_name, source in CAMERAS.__dict__.items():
 
 			try:
@@ -136,7 +194,7 @@ if __name__ == "__main__":
 						"source": source,
 					},
 				)
-				logger.info(f"Added {camera_name} from {source}")
+				logger.info(f"Added {camera_name} from '{source}'")
 			except Exception as e:
 				logger.error(f"Error adding cameras: {e}")
 

@@ -1,6 +1,7 @@
 import configparser
 import os
 import sys
+from venv import logger
 
 global DUET, UI, LOGGING, ACTION, MACRO, NTFY, PUSHOVER
 
@@ -13,50 +14,67 @@ class DictToClass:
 			setattr(self, key, value)
 
 def parse_config(config_file,logger):
-	global UI, LOGGING, CAMERAS
-	logger.debug(f"Looking for config file at {config_file}")
+	global UI, LOGGING, CAMERAS, PICAMERAS
 
-	if os.path.exists(config_file):
-		config = configparser.ConfigParser()
-		config.optionxform = str #preserves case of keys
-		config.read(config_file)
+	if not os.path.exists(config_file):
+		logger.debug(f"No Config file:  {config_file}")
+		return False
+	else:
+		logger.debug(f"Parsing {config_file}")
+		try:
+			config = configparser.ConfigParser()
+			config.optionxform = str #preserves case of keys
+			config.read(config_file)
 
-		# Convert to dict
-		# Source - https://stackoverflow.com/a/28990982
-		config_dict = {s:dict(config.items(s)) for s in config.sections()}
+			# Convert to dict
+			# Source - https://stackoverflow.com/a/28990982
+			config_dict = {s:dict(config.items(s)) for s in config.sections()}
 
-		# Get the various sections
-		ui_section = config_dict["UI"]
-		logging_section = config_dict["LOGGING"]
-		cameras_section = config_dict["CAMERAS"]
+			# Get the various sections
+			ui_section = config_dict["UI"]
+			logging_section = config_dict["LOGGING"]
+			cameras_section = config_dict["CAMERAS"]
+			picameras_section = config_dict["PICAMERAS"]
+			
 
-		#Change the keys to UPPER
-		config_dict_ui = {k.upper():v for k,v in ui_section.items()}
-		config_dict_logging = {k.upper():v for k,v in logging_section.items()}
-		config_dict_cameras = dict(cameras_section)
+			#Change the keys to UPPER
+			config_dict_ui = {k.upper():v for k,v in ui_section.items()}
+			config_dict_logging = {k.upper():v for k,v in logging_section.items()}
+			config_dict_cameras = {k.upper():v for k,v in cameras_section.items()}
+			config_dict_picameras = {k.upper():v for k,v in picameras_section.items()}
 
-		#Convert to dot dict
+			#Convert to dot dict
 
-		UI = DictToClass(config_dict_ui)
-		LOGGING = DictToClass(config_dict_logging)
-		CAMERAS = DictToClass(config_dict_cameras)
+			UI = DictToClass(config_dict_ui)
+			LOGGING = DictToClass(config_dict_logging)
+			CAMERAS = DictToClass(config_dict_cameras)
+			PICAMERAS = DictToClass(config_dict_picameras)
 
-		# Adjust types and values
-		# UI
-		if not hasattr(UI,'PORT'):
-			logger.critical('UI section must have a PORT specified')
-			sys.exit(1)
+			# Adjust types and values
+			# UI
+			if not hasattr(UI,'PORT'):
+				raise ValueError('UI section must have a PORT specified')
+			
+			UI.PORT = int(UI.PORT)
+			if UI.PORT < 1024 or UI.PORT > 65535:
+				raise ValueError('UI PORT must be between 1024 and 65535')
 
-		UI.HOST = '0.0.0.0'
-		UI.PORT = int(UI.PORT)
+			# LOGGING
+			if not hasattr(LOGGING,'LEVEL') : LOGGING.LEVEL = 'INFO'        
+			if LOGGING.LEVEL not in ['DEBUG','INFO','WARNING']:
+				raise ValueError('LOGGING LEVEL must be one of DEBUG, INFO, WARNING')
 
-		# LOGGING
-		if not hasattr(LOGGING,'LEVEL') : LOGGING.LEVEL = 'INFO'        
+			# CAMERAS
+			if CAMERAS is None or CAMERAS.__dict__ == {}:
+				raise ValueError('CAMERAS section must have at least one Camera specified')
 
-		# CAMERAS
-		if CAMERAS is None or CAMERAS.__dict__ == {}:
-			logger.critical('CAMERAS section must have at least one Camera specified')
-			sys.exit(1)
-		return True
-	
-	return False
+			# PICAMERAS
+			if PICAMERAS is None:
+				PICAMERAS = DictToClass({})
+				
+			# All tests passed
+			return True
+		except Exception as e:
+			logger.critical(f'Error parsing config file {config_file}')
+			logger.critical(f'{e}')
+			return False
