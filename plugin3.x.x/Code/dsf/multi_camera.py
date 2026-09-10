@@ -12,6 +12,7 @@ import threading
 
 from typing import Dict, Optional
 from config import DEFAULT_JPEG_QUALITY
+import logger_module
 
 
 def is_valid_jpeg_bytes(data: Optional[bytes]) -> bool:
@@ -84,7 +85,8 @@ class CameraStream:
         if self.running:
             return
 
-        print(
+
+        logger_module.logger.debug(
             f"Opening "
             f"{self.source} "
             f"using V4L2"
@@ -157,7 +159,7 @@ class CameraStream:
                 f"{self.source}"
             )
 
-        print("Camera opened successfully")
+        logger_module.logger.debug("Camera opened successfully")
 
         self.running = True
 

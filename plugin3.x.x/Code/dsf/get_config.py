@@ -34,7 +34,7 @@ def parse_config(config_file,logger):
 			ui_section = config_dict["UI"]
 			logging_section = config_dict["LOGGING"]
 			cameras_section = config_dict["CAMERAS"]
-			picameras_section = config_dict["PICAMERAS"]
+			picameras_section = config_dict.get("PICAMERAS", {})
 			
 
 			#Change the keys to UPPER
@@ -64,13 +64,9 @@ def parse_config(config_file,logger):
 			if LOGGING.LEVEL not in ['DEBUG','INFO','WARNING']:
 				raise ValueError('LOGGING LEVEL must be one of DEBUG, INFO, WARNING')
 
-			# CAMERAS
-			if CAMERAS is None or CAMERAS.__dict__ == {}:
-				raise ValueError('CAMERAS section must have at least one Camera specified')
-
-			# PICAMERAS
-			if PICAMERAS is None:
-				PICAMERAS = DictToClass({})
+			# Check CAMERAS and PICAMERAS are not both empty
+			if CAMERAS.__dict__ == {} and PICAMERAS.__dict__ == {}:
+				raise ValueError('At least one camera must be specified in CAMERAS or PICAMERAS')		
 				
 			# All tests passed
 			return True

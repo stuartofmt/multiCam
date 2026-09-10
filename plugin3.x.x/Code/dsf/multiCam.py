@@ -121,13 +121,11 @@ if __name__ == "__main__":
 	CONFIGFILENAME = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent / "config.ini"
 	LOGFILENAME = CONFIGFILENAME.parent / "multiCam.log"
 
-	global logger
-
 	# Create a logfile
 	script_name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
 
 	if not setup_log(progName,LOGFILENAME):
-		print(f"Failed to setup logging to {LOGFILENAME}. Please ensure the file is writable.")
+		logger.error(f"Failed to setup logging to {LOGFILENAME}. Please ensure the file is writable.")
 		sys.exit(1)
 
 	from logger_module import logger # Need to import after setup_logging is called
@@ -137,7 +135,7 @@ if __name__ == "__main__":
 	from get_config import parse_config
 
 	if not parse_config(CONFIGFILENAME,logger):
-		print(f"Failed to load configuration from {CONFIGFILENAME}. Please ensure the file exists and is properly formatted.")
+		logger.error(f"Failed to load configuration from {CONFIGFILENAME}. Please ensure the file exists and is properly formatted.")
 		force_quit(1)
 
 	# Can now get config parameters
@@ -199,12 +197,16 @@ if __name__ == "__main__":
 				logger.error(f"Error adding cameras: {e}")
 
 	# Start all cameras after registration
-	start_cameras()
+	try:
+		start_cameras()
+	except Exception as e:
+		logger.critical(f"{e}")
+		force_quit(1)
 
 	logger.info('-------------------------------------------------------\n')
-	logger.info(f"View cameras at http://{this_ip_address}:8002\n")
-	logger.info(f"Streaming url is http://{this_ip_address}:8002/<camera name>stream\n")
-	logger.info(f"Snapshot url is http://{this_ip_address}:8002/<camera name>/snapshot\n")
+	logger.info(f"View cameras at http://{this_ip_address}:{UI.PORT}\n")
+	logger.info(f"Streaming url is http://{this_ip_address}:{UI.PORT}/<camera name>stream\n")
+	logger.info(f"Snapshot url is http://{this_ip_address}:{UI.PORT}/<camera name>/snapshot\n")
 
 	# Keep the main thread alive
 	server_thread.join()

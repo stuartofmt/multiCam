@@ -36,8 +36,8 @@ PORT =
 #       IP Camera=http://192.168.30.31:8081
 
 [PICAMERAS]
-# Each entry adds one Picamera2 stream to the same camera manager.
-# The value is reserved for the camera index and is currently ignored.
-PiCam=0
+# Each entry adds one Picamera.
+# The format is the same as CAMERAS section
+;PiCam1=
 
 
