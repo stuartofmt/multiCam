@@ -7,10 +7,12 @@ Venv python install e.g.
 #! <path-to-virtual-environment/bin>python -u
 """
 
+#This is to supress the noisy libcam  MUST BE AT THE VERY START OF THE SCRIPT
+import os
+os.environ["LIBCAMERA_LOG_LEVELS"] = "*:ERROR"
 
 from pathlib import Path
 import sys
-import os
 
 import httpx
 import threading
@@ -18,6 +20,15 @@ import time
 import uvicorn
 import socket
 import signal
+
+import subprocess
+import re
+
+import glob
+import re
+import subprocess
+from picamera2 import Picamera2
+
 
 # from config import STATIC_DIR
 from routes import app, start_cameras
@@ -66,47 +77,85 @@ def sig_handler(signum, frame):
 	logger.info(f'Shutting down.  Recieved signal {signame} ({signum})')
 	force_quit(0)
 
-import subprocess
-import re
-
-def list_cameras():
-	try:	
-		result = subprocess.run(
-			["ls", "-l", "/dev/v4l/by-id/"],
-			capture_output=True,
-			text=True
-		)
-
-		if result.returncode != 0:
-			raise RuntimeError(f"ls -l /dev/v4l/by-id/ failed: {result.stderr.strip()}")
+def list_pi_cameras():
+	# --- CSI cameras via picamera2 ---
+	pi_cameras = []
+	try:
+		cameras = Picamera2.global_camera_info()
+		for index, cam_info in enumerate(cameras):
+			if 'usb' in cam_info['Id'].lower():  # Ignore USB Cameras in this section
+				continue  # Skip
+			pi_cameras.append((index))
 
 		camera_results = [f"\n", "-" * 95]
-		
-		# Process the text line by line
-		for line in result.stdout.strip().split('\n'):
-			# Skip empty lines or total count lines
-			if not line or line.startswith('total'):
-				continue
-				
-			# Regex to capture the symlink name and the video index it points to
-			# Looks for the filename before '->' and the 'videoX' at the end
-			match = re.search(r'([^/\s]+)\s+->\s+.*/video(\d+)', line)
-			
-			if match:
-				symlink_name = match.group(1)
-				video_num = int(match.group(2))
-				
-				# Filter for even numbers only
-				if video_num % 2 == 0:
-					device_node = f"/dev/video{video_num}"
-					camera_results.append(f"{device_node:<12} | {symlink_name:<80}")
-		camera_results.append("\n")
-		logger.info("\n".join(camera_results))
+		if pi_cameras:
+			for index in pi_cameras:
+				camera_results.append(f"PiCamera found with Index: {index}")
+			camera_results.append("\n")
+			logger.info("\n".join(camera_results))
+		else:
+			camera_results.append("No Pi cameras found.")
+			logger.info("\n".join(camera_results))
 
 	except Exception as e:
-		logger.critical(f"Error listing cameras")
+		logger.critical(f"Error listing Pi cameras")
 		logger.critical(f"{e}")
 		force_quit(1)
+
+def list_usb_cameras():
+	"""
+	Return a list of /dev/videoN paths for USB cameras that actually
+	support video capture (filters out metadata-only nodes by
+	checking reported capabilities, not by even/odd guessing).
+	"""
+	try:
+		video_nodes = sorted(glob.glob('/dev/video*'),
+							key=lambda x: int(re.search(r'\d+', x).group()))
+	except Exception as e:
+		logger.critical(f"Error listing /dev/video* nodes")
+		logger.critical(f"{e}")
+		force_quit(1)
+
+	usb_devices = []
+	try:
+		for node in video_nodes:
+			result = subprocess.run(
+					['v4l2-ctl', '-d', node, '--info'],
+					capture_output=True, text=True, timeout=2
+				)
+
+			if result.returncode != 0:
+				continue
+
+			out = result.stdout
+
+			is_usb = 'usb' in out.lower()
+			# "Device Caps" lists the node's own capabilities; some nodes
+			# only show "Video Capture" under "All Caps" (i.e. the driver
+			# supports it) without exposing it on this particular node —
+			# we want it listed under Device Caps to be usable.
+			device_caps_section = out.split('Device Caps')[-1] if 'Device Caps' in out else ''
+			supports_capture = 'Video Capture' in device_caps_section
+
+			if is_usb and supports_capture:
+				usb_devices.append(node)
+	except Exception as e:
+		logger.critical(f"Error checking USB camera capabilities")
+		logger.critical(f"{e}")
+		force_quit(1)
+
+	camera_results = [f"\n", "-" * 95]
+
+	if usb_devices:
+		# --- USB cameras via /dev/video* (capability-checked) ---
+		camera_results.append("USB camera devices (capture-capable):")
+		for dev in usb_devices:
+			camera_results.append(f"  {dev}")
+		logger.info("\n".join(camera_results))
+	else:
+		camera_results.append("No USB cameras found.")
+		logger.info("\n".join(camera_results))	
+
 
 if __name__ == "__main__":
 
@@ -130,7 +179,8 @@ if __name__ == "__main__":
 
 	from logger_module import logger # Need to import after setup_logging is called
 	logger.info(f'''Log file for {progName} -- {progVersion}''')
-	list_cameras()
+	list_usb_cameras()
+	list_pi_cameras()
 
 	from get_config import parse_config
 
