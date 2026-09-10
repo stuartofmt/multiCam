@@ -255,7 +255,7 @@ if __name__ == "__main__":
 
 	logger.info('-------------------------------------------------------\n')
 	logger.info(f"View cameras at http://{this_ip_address}:{UI.PORT}\n")
-	logger.info(f"Streaming url is http://{this_ip_address}:{UI.PORT}/<camera name>stream\n")
+	logger.info(f"Streaming url is http://{this_ip_address}:{UI.PORT}/<camera name>/stream\n")
 	logger.info(f"Snapshot url is http://{this_ip_address}:{UI.PORT}/<camera name>/snapshot\n")
 
 	# Keep the main thread alive
