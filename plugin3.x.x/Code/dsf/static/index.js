@@ -17,10 +17,23 @@ async function loadCameras() {
         const card = document.createElement("div");
         card.className = "camera-card";
 
-        const title = document.createElement("h2");
         const streamUrl = new URL(`/${cameraName}/stream`, window.location.href);
         const snapshotUrl = new URL(`/${cameraName}/snapshot`, window.location.href);
-        title.innerText = `${cameraName}\nStream: ${streamUrl.href}\nSnapshot: ${snapshotUrl.href}`;
+        const title = document.createElement("h2");
+        title.innerText = cameraName;
+
+        const streamLink = document.createElement("a");
+        streamLink.href = streamUrl.href;
+        streamLink.target = "_blank";
+        streamLink.rel = "noopener noreferrer";
+        streamLink.innerText = `Stream: ${streamUrl.href}`;
+
+        const snapshotLink = document.createElement("a");
+        snapshotLink.href = snapshotUrl.href;
+        snapshotLink.target = "_blank";
+        snapshotLink.rel = "noopener noreferrer";
+        snapshotLink.innerText = `Snapshot: ${snapshotUrl.href}`;
+
         console.warn(`Camera: ${cameraName}, Stream URL: ${streamUrl.href}, Snapshot URL: ${snapshotUrl.href}`);
         const img = document.createElement("img");
 
@@ -28,6 +41,9 @@ async function loadCameras() {
         img.alt = cameraName;
 
         card.appendChild(title);
+        card.appendChild(streamLink);
+        card.appendChild(document.createElement("br"));
+        card.appendChild(snapshotLink);
         card.appendChild(img);
 
         grid.appendChild(card);
