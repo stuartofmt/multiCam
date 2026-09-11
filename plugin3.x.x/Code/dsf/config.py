@@ -9,6 +9,12 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
+
+# ============================================================
+# Allowed Camera Defaults
+# ============================================================
+ALLOWED_CAMERA_OPTIONS = ["fps","width","height","brightness","contrast","focus","balance"]
+
 # ============================================================
 # Camera Defaults
 # ============================================================

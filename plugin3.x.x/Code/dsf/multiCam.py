@@ -15,6 +15,7 @@ from pathlib import Path
 import sys
 
 import httpx
+import json
 import threading
 import time
 import uvicorn
@@ -26,8 +27,6 @@ import re
 
 import glob
 
-
-# from config import STATIC_DIR
 from routes import app, start_cameras
 
 from logger_module import (setup_log, set_log_level)
@@ -179,6 +178,7 @@ if __name__ == "__main__":
 	from logger_module import logger # Need to import after setup_logging is called
 	logger.info(f'''Log file for {progName} -- {progVersion}''')
 	list_usb_cameras()
+	list_pi_cameras()
 
 	from get_config import parse_config
 
@@ -187,20 +187,12 @@ if __name__ == "__main__":
 		force_quit(1)
 
 	# Can now get config parameters
-	from get_config import (UI, LOGGING, CAMERAS, PICAMERAS)
-	if PICAMERAS.__dict__:
-		list_pi_cameras()
-
-	'''
-	for camera_name, source in CAMERAS.__dict__.items():
-		print(f"Camera: {camera_name}, Source: {source}")
-	'''
+	from get_config import (UI, LOGGING, CAMERAS)
 
 	# Set logging level
 	logger = set_log_level(LOGGING.LEVEL,logger)
 
 	this_ip_address = getIP(UI.PORT)
-
 
 	# Start uvicorn in a background thread
 	def run_server():
@@ -219,40 +211,19 @@ if __name__ == "__main__":
 	time.sleep(2)
 
 	with httpx.Client() as client:
-		for camera_name, source in PICAMERAS.__dict__.items():
+		for camera_name, camera_settings in CAMERAS.items():
 			try:
+				camera_payload = json.loads(camera_settings)
 				response = client.post(
 					f"http://{this_ip_address}:{UI.PORT}/api/add-camera",
-					json={
-						"name": camera_name,
-						"source": source,
-						"cameratype": "picamera",
-					},
+					json=camera_payload,
 				)
 				if response.is_success and response.json().get("status") == "success":
-					logger.info(f"Added {camera_name} with index '{source}'")
-				else:
-					logger.error(f"Error adding PiCamera {camera_name}: {response.text}")
-			except Exception as e:
-				logger.error(f"Error adding PiCamera {camera_name}: {e}")
-
-		for camera_name, source in CAMERAS.__dict__.items():
-
-			try:
-				response = client.post(
-					f"http://{this_ip_address}:{UI.PORT}/api/add-camera",
-					json={
-						"name": camera_name,
-						"source": source,
-						"cameratype": "USB",
-					},
-				)
-				if response.is_success and response.json().get("status") == "success":
-					logger.info(f"Added {camera_name} from '{source}'")
+					logger.info(f"Added {camera_name} with source '{camera_payload['source']}'")
 				else:
 					logger.error(f"Error adding camera {camera_name}: {response.text}")
 			except Exception as e:
-				logger.error(f"Error adding cameras: {e}")
+				logger.error(f"Error adding camera {camera_name}: {e}")
 
 	# Start all cameras after registration
 	try:

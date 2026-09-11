@@ -3,6 +3,7 @@ configparser
 fastapi
 glob
 httpx
+json
 logging
 numpy
 opencv-python-headless
