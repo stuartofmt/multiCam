@@ -316,6 +316,7 @@ class MultiCameraManager:
         contrast: float = 1.0,
         focus: float = 1.0,
         balance: float = 1.0,
+        cameratype: Optional[str] = 'USB',
     ):
 
         if name in self.cameras:
@@ -324,9 +325,10 @@ class MultiCameraManager:
                 f"Camera '{name}' already exists"
             )
 
-        if source == "picamera2":
+        if cameratype == "picamera":
             from picam import Picamera2Stream
             self.cameras[name] = Picamera2Stream(
+                camera_index=int(source),
                 fps=fps,
                 width=width,
                 height=height,

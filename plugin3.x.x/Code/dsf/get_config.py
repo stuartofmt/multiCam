@@ -1,7 +1,5 @@
 import configparser
 import os
-import sys
-from venv import logger
 
 global DUET, UI, LOGGING, ACTION, MACRO, NTFY, PUSHOVER
 

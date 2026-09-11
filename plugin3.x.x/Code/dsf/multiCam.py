@@ -25,9 +25,6 @@ import subprocess
 import re
 
 import glob
-import re
-import subprocess
-from picamera2 import Picamera2
 
 
 # from config import STATIC_DIR
@@ -79,6 +76,8 @@ def sig_handler(signum, frame):
 
 def list_pi_cameras():
 	# --- CSI cameras via picamera2 ---
+	from picamera2 import Picamera2
+
 	pi_cameras = []
 	try:
 		cameras = Picamera2.global_camera_info()
@@ -180,7 +179,6 @@ if __name__ == "__main__":
 	from logger_module import logger # Need to import after setup_logging is called
 	logger.info(f'''Log file for {progName} -- {progVersion}''')
 	list_usb_cameras()
-	list_pi_cameras()
 
 	from get_config import parse_config
 
@@ -190,6 +188,8 @@ if __name__ == "__main__":
 
 	# Can now get config parameters
 	from get_config import (UI, LOGGING, CAMERAS, PICAMERAS)
+	if PICAMERAS.__dict__:
+		list_pi_cameras()
 
 	'''
 	for camera_name, source in CAMERAS.__dict__.items():
@@ -219,16 +219,20 @@ if __name__ == "__main__":
 	time.sleep(2)
 
 	with httpx.Client() as client:
-		for camera_name in PICAMERAS.__dict__:
+		for camera_name, source in PICAMERAS.__dict__.items():
 			try:
 				response = client.post(
 					f"http://{this_ip_address}:{UI.PORT}/api/add-camera",
 					json={
 						"name": camera_name,
-						"source": "picamera2",
+						"source": source,
+						"cameratype": "picamera",
 					},
 				)
-				logger.info(f"Added PiCamera {camera_name}")
+				if response.is_success and response.json().get("status") == "success":
+					logger.info(f"Added {camera_name} with index '{source}'")
+				else:
+					logger.error(f"Error adding PiCamera {camera_name}: {response.text}")
 			except Exception as e:
 				logger.error(f"Error adding PiCamera {camera_name}: {e}")
 
@@ -240,9 +244,13 @@ if __name__ == "__main__":
 					json={
 						"name": camera_name,
 						"source": source,
+						"cameratype": "USB",
 					},
 				)
-				logger.info(f"Added {camera_name} from '{source}'")
+				if response.is_success and response.json().get("status") == "success":
+					logger.info(f"Added {camera_name} from '{source}'")
+				else:
+					logger.error(f"Error adding camera {camera_name}: {response.text}")
 			except Exception as e:
 				logger.error(f"Error adding cameras: {e}")
 

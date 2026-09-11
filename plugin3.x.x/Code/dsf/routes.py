@@ -1,8 +1,7 @@
-from pathlib import Path
-
 import asyncio
 import cv2
 import time
+from typing import Optional
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, Response, StreamingResponse
@@ -26,7 +25,6 @@ from config import (
     DEFAULT_JPEG_QUALITY
 )
 from multi_camera import MultiCameraManager, is_valid_jpeg_bytes
-from typing import Optional
 
 # ============================================================
 # Pydantic Models
@@ -36,6 +34,7 @@ from typing import Optional
 class CameraConfig(BaseModel):
     name: str
     source: str
+    cameratype: str = "USB"
     fps: float = DEFAULT_CAMERA_FPS
     width: Optional[int] = DEFAULT_CAMERA_WIDTH
     height: Optional[int] = DEFAULT_CAMERA_HEIGHT
@@ -128,6 +127,7 @@ async def api_add_camera(config: CameraConfig):
             contrast=config.contrast,
             focus=config.focus,
             balance=config.balance,
+            cameratype=config.cameratype,
         )
         return {"status": "success", "name": config.name}
     except Exception as e:

@@ -6,7 +6,8 @@ from multi_camera import is_valid_jpeg_bytes
 
 
 class Picamera2Stream:
-    def __init__(self, fps=30.0, width=640, height=480, copy_frame=False):
+    def __init__(self, camera_index=0, fps=30.0, width=640, height=480, copy_frame=False):
+        self.camera_index = camera_index
         self.fps = fps
         self.width = width
         self.height = height
@@ -25,7 +26,7 @@ class Picamera2Stream:
 
         from picamera2 import Picamera2
 
-        self.picam2 = Picamera2()
+        self.picam2 = Picamera2(camera_num=self.camera_index)
         configuration = self.picam2.create_video_configuration(
             main={"size": (self.width, self.height), "format": "RGB888"}
         )
