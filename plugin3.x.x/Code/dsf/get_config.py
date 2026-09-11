@@ -38,8 +38,8 @@ def parse_config(config_file,logger):
 			#Change the keys to UPPER
 			config_dict_ui = {k.upper():v for k,v in ui_section.items()}
 			config_dict_logging = {k.upper():v for k,v in logging_section.items()}
-			config_dict_cameras = {k.upper():v for k,v in cameras_section.items()}
-			config_dict_picameras = {k.upper():v for k,v in picameras_section.items()}
+			config_dict_cameras = dict(cameras_section)
+			config_dict_picameras = dict(picameras_section)
 
 			#Convert to dot dict
 
