@@ -11,7 +11,7 @@ import time
 import threading
 
 from typing import Dict, Optional
-from config import DEFAULT_JPEG_QUALITY
+from defaults import DEFAULT_JPEG_QUALITY
 import logger_module
 
 
@@ -122,18 +122,18 @@ class CameraStream:
         #
         # Resolution
         #
-        if self.width:
+        if self.width is not None:
 
             self.capture.set(
                 cv2.CAP_PROP_FRAME_WIDTH,
-                self.width
+                int(self.width)
             )
 
-        if self.height:
+        if self.height is not None:
 
             self.capture.set(
                 cv2.CAP_PROP_FRAME_HEIGHT,
-                self.height
+                int(self.height)
             )
 
         #
@@ -141,8 +141,34 @@ class CameraStream:
         #
         self.capture.set(
             cv2.CAP_PROP_FPS,
-            self.fps
+            int(self.fps)
         )
+
+        #
+        # Attempt to apply supported camera properties.
+        # Some devices reject unsupported or unavailable controls;
+        # in that case, ignore the setting instead of failing startup.
+        #
+        for prop, value in (
+            (cv2.CAP_PROP_BRIGHTNESS, float(self.brightness)),
+            (cv2.CAP_PROP_CONTRAST, float(self.contrast)),
+            (cv2.CAP_PROP_FOCUS, float(self.focus)),
+        ):
+            try:
+                self.capture.set(prop, value)
+            except Exception:
+                logger_module.logger.debug(
+                    f"Ignoring unsupported camera property {prop} for {self.source}"
+                )
+
+        wb_temperature = getattr(cv2, "CAP_PROP_WB_TEMPERATURE", None)
+        if wb_temperature is not None:
+            try:
+                self.capture.set(wb_temperature, float(self.balance))
+            except Exception:
+                logger_module.logger.debug(
+                    f"Ignoring unsupported white balance setting for {self.source}"
+                )
 
         #
         # Test frame capture
@@ -333,6 +359,10 @@ class MultiCameraManager:
                 width=width,
                 height=height,
                 copy_frame=copy_frame,
+                brightness=brightness,
+                contrast=contrast,
+                focus=focus,
+                balance=balance,
             )
         else:
             self.cameras[name] = CameraStream(

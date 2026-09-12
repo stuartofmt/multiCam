@@ -1,5 +1,6 @@
 asyncio
 configparser
+enum
 fastapi
 glob
 httpx

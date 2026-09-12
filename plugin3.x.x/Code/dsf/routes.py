@@ -11,18 +11,10 @@ from starlette.requests import Request
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from config import (
+from defaults import (
     STATIC_DIR,
-    DEFAULT_CAMERA_API_PREFERENCE,
-    DEFAULT_CAMERA_COPY_FRAME,
-    DEFAULT_CAMERA_FPS,
-    DEFAULT_CAMERA_HEIGHT,
-    DEFAULT_CAMERA_WIDTH,
-    DEFAULT_CONTRAST,
-    DEFAULT_BRIGHTNESS,
-    DEFAULT_FOCUS,
-    DEFAULT_BALANCE,
-    DEFAULT_JPEG_QUALITY
+    DEFAULT_JPEG_QUALITY,
+    DefaultCameraOptions,
 )
 from multi_camera import MultiCameraManager, is_valid_jpeg_bytes
 
@@ -35,23 +27,21 @@ class CameraConfig(BaseModel):
     name: str
     source: str
     cameratype: str = "USB"
-    fps: float = DEFAULT_CAMERA_FPS
-    width: Optional[int] = DEFAULT_CAMERA_WIDTH
-    height: Optional[int] = DEFAULT_CAMERA_HEIGHT
-    api_preference: Optional[int] = DEFAULT_CAMERA_API_PREFERENCE
-    copy_frame: bool = DEFAULT_CAMERA_COPY_FRAME
-    brightness: float = DEFAULT_BRIGHTNESS
-    contrast: float = DEFAULT_CONTRAST
-    focus: float = DEFAULT_FOCUS
-    balance: float = DEFAULT_BALANCE
+    fps: float = DefaultCameraOptions.fps.value
+    width: Optional[int] = DefaultCameraOptions.width.value
+    height: Optional[int] = DefaultCameraOptions.height.value
+    api_preference: Optional[int] = None
+    copy_frame: bool = False
+    brightness: float = DefaultCameraOptions.brightness.value
+    contrast: float = DefaultCameraOptions.contrast.value
+    focus: float = DefaultCameraOptions.focus.value
+    balance: float = DefaultCameraOptions.balance.value
 
 
 # ============================================================
 # Streaming Settings
 # ============================================================
 
-STREAM_FPS = DEFAULT_CAMERA_FPS
-STREAM_INTERVAL = 1.0 / STREAM_FPS
 JPEG_QUALITY = DEFAULT_JPEG_QUALITY
 
 # ============================================================
@@ -152,6 +142,13 @@ async def api_start_camera(request: StartCameraRequest):
 # ============================================================
 
 async def mjpeg_generator(request: Request, camera_name: str):
+    camera = manager.cameras.get(camera_name)
+    if camera is None:
+        return
+
+    fps = getattr(camera, "fps", DefaultCameraOptions.fps.value)
+    stream_interval = 1.0 / fps if fps > 0 else 1.0 / DefaultCameraOptions.fps.value
+
     while True:
         if await request.is_disconnected():
             print(f"Client disconnected: {camera_name}")
@@ -185,7 +182,7 @@ async def mjpeg_generator(request: Request, camera_name: str):
         )
 
         elapsed = time.perf_counter() - start
-        sleep_time = STREAM_INTERVAL - elapsed
+        sleep_time = stream_interval - elapsed
 
         if sleep_time > 0:
             await asyncio.sleep(sleep_time)

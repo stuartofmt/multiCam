@@ -1,7 +1,7 @@
 import configparser
 import os
 import json
-from config import ALLOWED_CAMERA_OPTIONS
+from defaults import DefaultCameraOptions
 
 global UI, LOGGING, CAMERAS
 # From https://gist.github.com/laywill/63d75b53e8a7a801d77f0dd2b97de54d
@@ -22,14 +22,17 @@ def get_camera_config(config, name, source, cameratype):
 	- Any options found in the camera's own section are cast to int
 	  and merged in as-is (no defaults applied).
 	"""
-	options = {}
+	options = {
+		option.name: float(option.value)
+		for option in DefaultCameraOptions
+	}
 	if config.has_section(name):
-		allowed_options = {option.lower() for option in ALLOWED_CAMERA_OPTIONS}
-		options = {
+		valid_options = {option.name.lower() for option in DefaultCameraOptions}
+		options.update({
 			key.lower(): float(value)
 			for key, value in config[name].items()
-			if key.lower() in allowed_options
-		}
+			if key.lower() in valid_options
+		})
 		
 
 	camera_data = {

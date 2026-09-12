@@ -6,12 +6,27 @@ from multi_camera import is_valid_jpeg_bytes
 
 
 class Picamera2Stream:
-    def __init__(self, camera_index=0, fps=30.0, width=640, height=480, copy_frame=False):
+    def __init__(
+        self,
+        camera_index=0,
+        fps=30.0,
+        width=640,
+        height=480,
+        copy_frame=False,
+        brightness=1.0,
+        contrast=1.0,
+        focus=1.0,
+        balance=1.0,
+    ):
         self.camera_index = camera_index
         self.fps = fps
         self.width = width
         self.height = height
         self.copy_frame = copy_frame
+        self.brightness = brightness
+        self.contrast = contrast
+        self.focus = focus
+        self.balance = balance
         self.picam2 = None
         self.thread = None
         self.running = False
@@ -26,11 +41,29 @@ class Picamera2Stream:
 
         from picamera2 import Picamera2
 
+        width = int(self.width)
+        height = int(self.height)
+        fps = int(self.fps)
+
         self.picam2 = Picamera2(camera_num=self.camera_index)
         configuration = self.picam2.create_video_configuration(
-            main={"size": (self.width, self.height), "format": "RGB888"}
+            main={"size": (width, height), "format": "RGB888"}
         )
         self.picam2.configure(configuration)
+
+        for control_name, value in (
+            ("Brightness", float(self.brightness)),
+            ("Contrast", float(self.contrast)),
+            ("LensPosition", float(self.focus)),
+            ("AwbMode", int(self.balance)),
+        ):
+            try:
+                self.picam2.set_controls({control_name: value})
+            except Exception:
+                pass
+
+        self.fps = float(fps)
+
         self.picam2.start()
         self.running = True
         self.thread = threading.Thread(target=self._update, daemon=True)
