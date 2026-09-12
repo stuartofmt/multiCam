@@ -213,7 +213,7 @@ if __name__ == "__main__":
 	with httpx.Client() as client:
 		for camera_name, camera_settings in CAMERAS.items():
 			try:
-				camera_payload = json.loads(camera_settings)
+				camera_payload = camera_settings
 				response = client.post(
 					f"http://{this_ip_address}:{UI.PORT}/api/add-camera",
 					json=camera_payload,

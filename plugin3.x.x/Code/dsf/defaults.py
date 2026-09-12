@@ -20,7 +20,7 @@ class DefaultCameraOptions(Enum):
     height = 768
     brightness = 1.0
     contrast = 1.0
-    focus = 1.0
+    focus = 0.0
     balance = 1.0
 
 
