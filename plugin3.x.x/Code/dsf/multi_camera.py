@@ -139,36 +139,36 @@ class CameraStream:
         #
         # FPS
         #
-        self.capture.set(
-            cv2.CAP_PROP_FPS,
-            int(self.fps)
-        )
+        # self.capture.set(
+        #     cv2.CAP_PROP_FPS,
+        #     int(self.fps)
+        # )
 
         #
         # Attempt to apply supported camera properties.
         # Some devices reject unsupported or unavailable controls;
         # in that case, ignore the setting instead of failing startup.
         #
-        for prop, value in (
-            (cv2.CAP_PROP_BRIGHTNESS, float(self.brightness)),
-            (cv2.CAP_PROP_CONTRAST, float(self.contrast)),
-            (cv2.CAP_PROP_FOCUS, float(self.focus)),
-        ):
-            try:
-                self.capture.set(prop, value)
-            except Exception:
-                logger_module.logger.debug(
-                    f"Ignoring unsupported camera property {prop} for {self.source}"
-                )
-
-        wb_temperature = getattr(cv2, "CAP_PROP_WB_TEMPERATURE", None)
-        if wb_temperature is not None:
-            try:
-                self.capture.set(wb_temperature, float(self.balance))
-            except Exception:
-                logger_module.logger.debug(
-                    f"Ignoring unsupported white balance setting for {self.source}"
-                )
+        # for prop, value in (
+        #     (cv2.CAP_PROP_BRIGHTNESS, float(self.brightness)),
+        #     (cv2.CAP_PROP_CONTRAST, float(self.contrast)),
+        #     (cv2.CAP_PROP_FOCUS, float(self.focus)),
+        # ):
+        #     try:
+        #         self.capture.set(prop, value)
+        #     except Exception:
+        #         logger_module.logger.debug(
+        #             f"Ignoring unsupported camera property {prop} for {self.source}"
+        #         )
+        #
+        # wb_temperature = getattr(cv2, "CAP_PROP_WB_TEMPERATURE", None)
+        # if wb_temperature is not None:
+        #     try:
+        #         self.capture.set(wb_temperature, float(self.balance))
+        #     except Exception:
+        #         logger_module.logger.debug(
+        #             f"Ignoring unsupported white balance setting for {self.source}"
+        #         )
 
         #
         # Test frame capture
@@ -270,11 +270,11 @@ class CameraStream:
             frame = self.frame.copy() if self.copy_frame else self.frame
 
             # Apply image adjustments
-            if self.contrast != 1.0:
-                frame = cv2.convertScaleAbs(frame, alpha=self.contrast, beta=0)
-
-            if self.brightness != 1.0:
-                frame = cv2.convertScaleAbs(frame, alpha=1.0, beta=(self.brightness - 1.0) * 50)
+            # if self.contrast != 1.0:
+            #     frame = cv2.convertScaleAbs(frame, alpha=self.contrast, beta=0)
+            #
+            # if self.brightness != 1.0:
+            #     frame = cv2.convertScaleAbs(frame, alpha=1.0, beta=(self.brightness - 1.0) * 50)
 
             return frame
 

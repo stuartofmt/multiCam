@@ -23,6 +23,7 @@ class DefaultCameraOptions(Enum):
     focus = 0.0
     balance = 1.0
 
+ALLOWABLE_OPTIONS = ["brightness","contrast","balance","saturation","autofocus","sharpness","autoexposure"]
 
 # ============================================================
 # Camera Defaults

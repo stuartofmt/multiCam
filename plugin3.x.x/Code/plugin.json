@@ -11,6 +11,6 @@
 	"sbcExecutableArguments": "/opt/dsf/sd/sys/multiCam/multiCam.config",
 	"sbcOutputRedirected": false,
 	"sbcPermissions": ["networkAccess", "webcamAccess", "fileSystemAccess"],
-	"sbcPackageDependencies": ["python3", "python3-libcamera", "python3-picamera2"],
+	"sbcPackageDependencies": ["python3", "python3-libcamera", "python3-picamera2","v4l-utils"],
 	"sbcPythonDependencies": ["--verbose","requirements.txt"]
  }
