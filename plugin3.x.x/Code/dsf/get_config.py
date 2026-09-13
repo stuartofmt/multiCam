@@ -91,8 +91,21 @@ def get_camera_defaults(device_path="/dev/video0"):
 			logger.debug(f"Error resetting {device_path}: {e.stderr}")
 	else:
 		logger.debug("No supported controls found to reset.")
-	logger.info(target_controls)
-	return target_controls
+
+	default_options = {
+		"contrast": target_controls.get("contrast"),
+		"balance": target_controls.get("white_balance_auto"),
+		"brightness": target_controls.get("brightness"),
+		"saturation": target_controls.get("saturation"),
+		"sharpness": target_controls.get("sharpness"),
+	}
+	default_options = {
+		name: control["default"]
+		for name, control in default_options.items()
+		if control is not None
+	}
+	# logger.info(default_options)
+	return default_options
 
 
 def update_camera_config(config, options):
@@ -107,7 +120,7 @@ def update_camera_config(config, options):
 	"""
 
 	if config.has_section(options['name']):
-		valid_options = {option.name.lower() for option in DefaultCameraOptions}
+		valid_options = {option_name.lower() for option_name in DefaultCameraOptions.__members__}
 		options.update({
 			key.lower(): float(value)
 			for key, value in config[name].items()
@@ -136,12 +149,12 @@ def get_config_from_file(config, name, source, cameratype):
 	file_options = {}
 
 	default_options = {
-		option.name: float(option.value)
-		for option in DefaultCameraOptions
+		option_name: float(option.value)
+		for option_name, option in DefaultCameraOptions.__members__.items()
 	}
 
 	if config.has_section(name):
-		valid_options = {option.name.lower() for option in DefaultCameraOptions}
+		valid_options = {option_name.lower() for option_name in DefaultCameraOptions.__members__}
 		file_options.update({
 			key.lower(): float(value)
 			for key, value in config[name].items()
@@ -161,10 +174,7 @@ def get_config_from_file(config, name, source, cameratype):
 
 	camera_file_options = {
 		key.lower(): value
-		for key, value in {
-			"name": name,
-			**file_options
-		}.items()
+		for key, value in file_options.items()
 	}
 
 	return camera_data, camera_file_options
@@ -215,7 +225,6 @@ def parse_config(config_file,logger):
 
 			# Process all Camera settings
 
-
 			CAMERAS = {}
 			camera_config_options = {}
 
@@ -226,7 +235,19 @@ def parse_config(config_file,logger):
 			print('Starting Defaults')
 			for name, source in config['CAMERAS'].items():
 				CAMERAS[name], camera_config_options[name] = get_config_from_file(config, name, source,"USB")
-				CAMERAS[name]=get_camera_defaults(CAMERAS[name]['source'])
+				'''
+				camera_defaults = get_camera_defaults(CAMERAS[name]['source'])
+				if camera_defaults:
+					for option_name, default_value in camera_defaults.items():
+						CAMERAS[name][option_name] = float(default_value)
+				CAMERAS[name].update(
+					{
+						key: value
+						for key, value in camera_config_options[name].items()
+						if key != "name"
+					}
+				)
+				'''
 			for name, source in config['PICAMERAS'].items():
 				CAMERAS[name] , camera_config_options[name] = get_config_from_file(config, name, source, "picamera")
 
@@ -235,11 +256,14 @@ def parse_config(config_file,logger):
 				raise ValueError('At least one camera must be specified in CAMERAS or PICAMERAS')		
 
 			# All tests passed - log effective configuration
-			logger.info("Configured Camera Settings")
+			camera_results = [f"\n", "-" * 95]
+			
+			camera_results.append("Configured Camera Settings")
 			for name, options in CAMERAS.items():
-				logger.info(f'''{options}''')
-			import sys
-			sys.exit(0)
+				camera_results.append(f'''{options}''')
+
+			camera_results.append("\n")
+			logger.info("\n".join(camera_results))
 
 			return True
 		except Exception as e:
