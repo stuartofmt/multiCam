@@ -23,8 +23,8 @@ class DefaultCameraOptions(Enum):
     focus = 0.0
     balance = 1.0
 
-ALLOWABLE_OPTIONS = ["brightness","contrast","balance","saturation","autofocus","sharpness","autoexposure"]
-
+ALLOWED_OPTIONS = ["brightness","contrast","balance","saturation","autofocus","sharpness","autoexposure"]
+ALLOWED_SETTINGS = ['fps','width','height','jpegresolution']
 # ============================================================
 # Camera Defaults
 # ============================================================
@@ -33,7 +33,6 @@ DEFAULT_CAMERA_WIDTH = 320 * 4
 DEFAULT_CAMERA_HEIGHT = 240 * 4
 DEFAULT_CAMERA_API_PREFERENCE = None
 DEFAULT_CAMERA_COPY_FRAME = False
-
 
 # JPEG encoding quality for cached frames
 DEFAULT_JPEG_QUALITY = 95
