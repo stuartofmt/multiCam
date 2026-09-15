@@ -3,7 +3,7 @@ import os
 import re
 import subprocess
 import glob
-from defaults import DefaultCameraOptions, ALLOWED_OPTIONS, ALLOWED_SETTINGS
+from defaults import DefaultCameraSettings, ALLOWED_OPTIONS, ALLOWED_SETTINGS
 from logger_module import logger
 from multiCam import force_quit
 
@@ -220,21 +220,26 @@ def set_controls_usb(controls_by_source, camera_config_options=None):
 				value = camera_config_options.get(canonical_name)
 			else:
 				value = bounds.get("default")
+
+			default_val = bounds.get("default")
 			min_val = bounds.get("min")
 			max_val = bounds.get("max")
+
+			print(f'{value=}')
+			print(f'{default_val=}')
 
 			if value is None:
 				logger.debug(f"[{source}] {canonical_name}: no value to set, skipping")
 				results[canonical_name] = False
 				continue
-
-			if min_val is not None and (float(value) <= float(min_val)):
+			
+			if min_val is not None and (float(value) < float(min_val)):
 				logger.debug(f"[{source}] {canonical_name}: value {value} below min {min_val}, clamping")
-				value = min_val
-			if max_val is not None and (float(value) >= float(max_val)):
+				value = default_val
+			if max_val is not None and (float(value) > float(max_val)):
 				logger.debug(f"[{source}] {canonical_name}: value {value} above max {max_val}, clamping")
-				value = max_val
-
+				value = default_val
+			
 			try:
 				subprocess.run(
 					["v4l2-ctl", "-d", source, "--set-ctrl", f"{real_name}={value}"],
@@ -258,7 +263,7 @@ def set_controls_usb(controls_by_source, camera_config_options=None):
 
 
 # Maps each allowable canonical key to the real Picamera2/libcamera control name.
-PI_CONTROL_NAME_MAP = {
+CONTROL_NAME_MAP_PICAM = {
 	"brightness": "Brightness",
 	"contrast": "Contrast",
 	"balance": "AwbEnable",
@@ -269,7 +274,7 @@ PI_CONTROL_NAME_MAP = {
 }
 
 # Reverse lookup: real Picamera2 control name -> canonical name
-PI_REAL_TO_CANONICAL = {v: k for k, v in PI_CONTROL_NAME_MAP.items()}
+PI_REAL_TO_CANONICAL = {v: k for k, v in CONTROL_NAME_MAP_PICAM.items()}
 
 
 def get_camera_options_picam(camera_name, source):
@@ -327,8 +332,9 @@ def get_camera_options_picam(camera_name, source):
 		}
 
 	picam2.close()
-
+	print(f'PI CONTROLS = {writable_controls}')
 	return {source: writable_controls}
+
 
 def set_controls_picam(controls_by_source, camera_config_options=None):
 	"""
@@ -356,6 +362,11 @@ def set_controls_picam(controls_by_source, camera_config_options=None):
 		A dict keyed on source, each value a dict of
 		{canonical_name: True/False} indicating whether the set succeeded.
 	"""
+
+	print(f'{controls_by_source=}')
+	print(f'{camera_config_options=}')
+
+
 	results_by_source = {}
 
 	for source, controls in controls_by_source.items():
@@ -369,7 +380,7 @@ def set_controls_picam(controls_by_source, camera_config_options=None):
 				continue
 			if canonical_name not in ALLOWED_OPTIONS:
 				continue
-			real_name = CONTROL_NAME_MAP.get(canonical_name)
+			real_name = CONTROL_NAME_MAP_PICAM.get(canonical_name)
 			if real_name is None or real_name not in picam2.camera_controls:
 				logger.debug(f"[{source}] {canonical_name}: not present on this camera")
 				results[canonical_name] = False
@@ -379,21 +390,29 @@ def set_controls_picam(controls_by_source, camera_config_options=None):
 				value = camera_config_options.get(canonical_name)
 			else:
 				value = bounds.get("default")
+
+			default_val = bounds.get("default")	
 			min_val = bounds.get("min")
 			max_val = bounds.get("max")
 
-			if value is None:
-				logger.debug(f"[{source}] {canonical_name}: no value to set, skipping")
-				results[canonical_name] = False
-				continue
+			print(f'PICAM {value=}')
+			print(f'PICAM {default_val=}')
+			try:
+				if value is None:
+					logger.debug(f"[{source}] {canonical_name}: no value to set, skipping")
+					results[canonical_name] = False
+					continue
+				
+				if min_val is not None and (float(value) < float(min_val)):
+					logger.debug(f"[{source}] {canonical_name}: value {value} below min {min_val}, clamping")
+					value = default_val
+				if max_val is not None and (float(value) > float(max_val)):
+					logger.debug(f"[{source}] {canonical_name}: value {value} above max {max_val}, clamping")
+					value = default_val
+			except Exception as e:
+				raise Exception(f'WTF {e}')
 
-			if min_val is not None and (float(value) <= float(min_val)):
-				logger.debug(f"[{source}] {canonical_name}: value {value} below min {min_val}, clamping")
-				value = min_val
-			if max_val is not None and (float(value) >= float(max_val)):
-				logger.debug(f"[{source}] {canonical_name}: value {value} above max {max_val}, clamping")
-				value = max_val
-
+			
 			try:
 				picam2.set_controls({real_name: value})
 				picam2.capture_metadata()  # force it to actually apply
@@ -409,37 +428,6 @@ def set_controls_picam(controls_by_source, camera_config_options=None):
 	return results_by_source
 
 
-def update_camera_config(config, options):
-	"""
-	Build the JSON string of settings for a single camera.
-
-	- name: camera name (matches [CAMERAS]/[PICAMERAS] key and optional section header)
-	- source: value from [CAMERAS] or [PICAMERAS], e.g. /dev/video0 or a pi camera index
-	- cameratype: e.g. "USB" or "picamera"
-	- Any options found in the camera's own section are cast to int
-	  and merged in as-is (no defaults applied).
-	"""
-
-	if config.has_section(options['name']):
-		valid_options = {option_name.lower() for option_name in DefaultCameraOptions.__members__}
-		options.update({
-			key.lower(): float(value)
-			for key, value in config[name].items()
-			if key.lower() in valid_options
-		})
-		
-
-	camera_data = {
-		key.lower(): value
-		for key, value in {
-			"name": name,
-			"source": source,
-			"cameratype": cameratype,
-			**options
-		}.items()
-	}
-
-	return camera_data
 
 def get_config_from_file(config, name, source, cameratype):
 	"""
@@ -447,15 +435,33 @@ def get_config_from_file(config, name, source, cameratype):
 	"""
 
 	file_options = {}
+	file_settings = {}
 
 	if config.has_section(name):
-		valid_options = ALLOWED_OPTIONS + ALLOWED_SETTINGS
+		valid_options = ALLOWED_OPTIONS
 		file_options.update({
 			key.lower(): float(value)
 			for key, value in config[name].items()
 			if key.lower() in valid_options
 		})
+
+		valid_settings = [setting.name for setting in DefaultCameraSettings]
+		file_settings.update({
+			key.lower(): float(value)
+			for key, value in config[name].items()
+			if key.lower() in valid_settings
+		})
+			
 		
+	default_camera_settings = {
+		setting.name: setting.value for setting in DefaultCameraSettings
+	}
+
+	camera_settings = {
+		**default_camera_settings,
+		**file_settings,
+	}
+
 
 
 	camera_data = {
@@ -463,7 +469,8 @@ def get_config_from_file(config, name, source, cameratype):
 		for key, value in {
 			"name": name,
 			"source": source,
-			"cameratype": cameratype
+			"cameratype": cameratype,
+			**camera_settings
 		}.items()
 	}
 
@@ -616,6 +623,10 @@ def parse_config(config_file,logger):
 					CAMERAS[name], CAMERA_CONFIG[name] = get_config_from_file(config, name, source,"STREAM")
 
 			for name, source in config['PICAMERAS'].items():
+				try:
+					source = int(source)
+				except ValueError:
+					raise ValueError(f'PICAMERAS entry {name} must be an integer camera index')
 				CAMERAS[name], CAMERA_CONFIG[name] = get_config_from_file(config, name, source,"PICAMERA")
 			# Check CAMERAS and PICAMERAS are not both empty
 			if CAMERAS == {}:
@@ -674,9 +685,8 @@ def configure_cameras(installed_cameras,camera_list,requested_options):
 					})
 
 				elif details['cameratype'] == 'PICAMERA':
-					#CAMERAS[name], camera_config_options = get_config_from_file(config, name, source,"PICAMERA")
 					camera_options = get_camera_options_picam(name,details['source'])
-					print(camera_options)
+					print(f'{camera_options=}')
 					set_controls_picam(camera_options,requested_options[name])
 
 					camera_list[name].update({

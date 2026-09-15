@@ -14,7 +14,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from defaults import (
     STATIC_DIR,
     DEFAULT_JPEG_QUALITY,
-    DefaultCameraOptions,
+    DefaultCameraSettings,
 )
 from multi_camera import MultiCameraManager, is_valid_jpeg_bytes
 
@@ -27,15 +27,15 @@ class CameraConfig(BaseModel):
     name: str
     source: str
     cameratype: str = "USB"
-    fps: float = DefaultCameraOptions.fps.value
-    width: Optional[int] = DefaultCameraOptions.width.value
-    height: Optional[int] = DefaultCameraOptions.height.value
+    fps: float = DefaultCameraSettings.fps.value
+    width: Optional[int] = DefaultCameraSettings.width.value
+    height: Optional[int] = DefaultCameraSettings.height.value
     api_preference: Optional[int] = None
     copy_frame: bool = False
-    brightness: float = DefaultCameraOptions.brightness.value
-    contrast: float = DefaultCameraOptions.contrast.value
-    focus: float = DefaultCameraOptions.focus.value
-    balance: float = DefaultCameraOptions.balance.value
+    #brightness: float = DefaultCameraSettings.brightness.value
+    #contrast: float = DefaultCameraSettings.contrast.value
+    #focus: float = DefaultCameraSettings.focus.value
+    #balance: float = DefaultCameraSettings.balance.value
 
 
 # ============================================================
@@ -146,8 +146,8 @@ async def mjpeg_generator(request: Request, camera_name: str):
     if camera is None:
         return
 
-    fps = getattr(camera, "fps", DefaultCameraOptions.fps.value)
-    stream_interval = 1.0 / fps if fps > 0 else 1.0 / DefaultCameraOptions.fps.value
+    fps = getattr(camera, "fps", DefaultCameraSettings.fps.value)
+    stream_interval = 1.0 / fps if fps > 0 else 1.0 / DefaultCameraSettings.fps.value
 
     while True:
         if await request.is_disconnected():
