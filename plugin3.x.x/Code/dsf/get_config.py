@@ -7,6 +7,9 @@ from defaults import DefaultCameraOptions, ALLOWED_OPTIONS, ALLOWED_SETTINGS
 from logger_module import logger
 from multiCam import force_quit
 
+# --- CSI cameras via picamera2 ---
+from picamera2 import Picamera2
+
 global UI, LOGGING, CAMERAS
 # From https://gist.github.com/laywill/63d75b53e8a7a801d77f0dd2b97de54d
 class DictToClass:
@@ -225,10 +228,10 @@ def set_controls_usb(controls_by_source, camera_config_options=None):
 				results[canonical_name] = False
 				continue
 
-			if min_val is not None and value <= min_val:
+			if min_val is not None and (float(value) <= float(min_val)):
 				logger.debug(f"[{source}] {canonical_name}: value {value} below min {min_val}, clamping")
 				value = min_val
-			if max_val is not None and value >= max_val:
+			if max_val is not None and (float(value) >= float(max_val)):
 				logger.debug(f"[{source}] {canonical_name}: value {value} above max {max_val}, clamping")
 				value = max_val
 
@@ -269,7 +272,7 @@ PI_CONTROL_NAME_MAP = {
 PI_REAL_TO_CANONICAL = {v: k for k, v in PI_CONTROL_NAME_MAP.items()}
 
 
-def probe_writable_controls_picam(camera_name, source):
+def get_camera_options_picam(camera_name, source):
 	"""
 	Reset ALL controls the camera reports back to their default values,
 	but return min/max/default only for the subset in ALLOWABLE_OPTIONS.
@@ -384,10 +387,10 @@ def set_controls_picam(controls_by_source, camera_config_options=None):
 				results[canonical_name] = False
 				continue
 
-			if min_val is not None and value < min_val:
+			if min_val is not None and (float(value) <= float(min_val)):
 				logger.debug(f"[{source}] {canonical_name}: value {value} below min {min_val}, clamping")
 				value = min_val
-			if max_val is not None and value > max_val:
+			if max_val is not None and (float(value) >= float(max_val)):
 				logger.debug(f"[{source}] {canonical_name}: value {value} above max {max_val}, clamping")
 				value = max_val
 
@@ -471,6 +474,15 @@ def get_config_from_file(config, name, source, cameratype):
 
 	return camera_data, camera_file_options
 
+def highlight_print(msg):
+	highlight = ["","=" * 95]
+	if isinstance(msg, (list, tuple)):
+		highlight.extend(msg)
+	else:
+		highlight.append(msg)
+	highlight = highlight +  ["-" * 95, f'\n']
+	logger.info("\n".join(highlight))
+
 
 
 def find_usb_cameras():
@@ -512,22 +524,21 @@ def find_usb_cameras():
 	except Exception as e:
 		raise Exception(f"Error checking USB camera capabilities - {e}")
 
-	camera_results = [f"\n", "-" * 95]
-
+	camera_results = []
 	if usb_devices:
 		# --- USB cameras via /dev/video* (capability-checked) ---
-		camera_results.append("USB camera devices (capture-capable):")
+		camera_results.append("USB camera found at these devices:")
 		for dev in usb_devices:
-			camera_results.append(f"  {dev}")
-		logger.info("\n".join(camera_results))
+			camera_results.append(f"-- {dev}")
 	else:
-		camera_results.append("No USB cameras found.")
-		logger.info("\n".join(camera_results))	
+		camera_results.append("No USB cameras were found.")
+
+	highlight_print(camera_results)
+
+	return usb_devices
 
 
 def find_pi_cameras():
-	# --- CSI cameras via picamera2 ---
-	from picamera2 import Picamera2
 
 	pi_cameras = []
 	try:
@@ -537,20 +548,19 @@ def find_pi_cameras():
 				continue  # Skip
 			pi_cameras.append((index))
 
-		camera_results = [f"\n", "-" * 95]
+		camera_results = []
 		if pi_cameras:
+			camera_results.append(f"PiCameras found:")
 			for index in pi_cameras:
-				camera_results.append(f"PiCamera found with Index: {index}")
-			camera_results.append("\n")
-			logger.info("\n".join(camera_results))
+				camera_results.append(f"--index {index}")
 		else:
 			camera_results.append("No Pi cameras found.")
-			logger.info("\n".join(camera_results))
 
+		highlight_print(camera_results)
+
+		return pi_cameras
 	except Exception as e:
-		logger.critical(f"Error listing Pi cameras")
-		logger.critical(f"{e}")
-		force_quit(1)
+		raise Exception(f"Error listing Pi cameras - {e}")
 
 
 def parse_config(config_file,logger):
@@ -598,6 +608,7 @@ def parse_config(config_file,logger):
 
 			CAMERAS = {}
 			CAMERA_CONFIG = {}
+
 			for name, source in config['CAMERAS'].items():
 				if source.startswith('/dev/video'):
 					CAMERAS[name], CAMERA_CONFIG[name] = get_config_from_file(config, name, source,"USB")
@@ -611,15 +622,21 @@ def parse_config(config_file,logger):
 				raise ValueError('At least one camera must be specified in CAMERAS or PICAMERAS')		
 
 			# All tests passed - log effective configuration
-			camera_results = [f"\n", "-" * 95]
+			camera_results = []
 			
-			camera_results.append("Configured Camera Settings")
+			camera_results.append("Requested Camera Settings")
 			for name, options in CAMERAS.items():
-				camera_results.append(f'''{options}''')
-				camera_results.append(f'''{CAMERA_CONFIG[name]}\n''')
-
-			camera_results.append("\n")
-			logger.info("\n".join(camera_results))
+				for option, value in options.items():
+					if option == 'name':
+						camera_results.append(f'{value}')
+					else:
+						camera_results.append(f'\t--{option} = {value}')
+				if CAMERA_CONFIG[name]:
+					for option, value in CAMERA_CONFIG[name].items():
+						camera_results.append(f'\t--{option} = {value}')
+				else:
+					camera_results.append(f'\tNo additional settings')
+			highlight_print(camera_results)
 
 			return UI,LOGGING,CAMERAS, CAMERA_CONFIG
 		
@@ -630,49 +647,54 @@ def parse_config(config_file,logger):
 
 def get_installed_cameras():
 	try:
-		#installed_cameras = {}
-		find_usb_cameras()
-		#usb_cameras = find_usb_cameras()
-		#pi_cameras = find_pi_cameras()
+		usb_cameras = find_usb_cameras()
+		pi_cameras = find_pi_cameras()
+		return usb_cameras + pi_cameras
 	except Exception as e:
 		raise Exception(f'{e}')
 
 	
-def configure_cameras(camera_list,requested_options):
+def configure_cameras(installed_cameras,camera_list,requested_options):
 			# Assemble the camera configurations
+		print(f'{camera_list=}')
+		print(f'{requested_options=}')
+		print(f'{installed_cameras=}')
 		try:
 			for name, details in camera_list.items():
 				#Ignore http etc
 				if details['cameratype'] == 'USB':
-					camera_options = get_camera_options_usb(name,source)
+					camera_options = get_camera_options_usb(name,details['source'])
 					print(camera_options)
 					set_controls_usb(camera_options,requested_options[name])
 
 					camera_list[name].update({
 						key: value
-						for key, value in camera_config_options.items()
+						for key, value in requested_options.items()
 						if key in ALLOWED_SETTINGS
 					})
 
 				elif details['cameratype'] == 'PICAMERA':
 					#CAMERAS[name], camera_config_options = get_config_from_file(config, name, source,"PICAMERA")
-					camera_options = get_camera_options_pi(name,source)
+					camera_options = get_camera_options_picam(name,details['source'])
 					print(camera_options)
-					set_controls_picam(camera_options,camera_config_options)
+					set_controls_picam(camera_options,requested_options[name])
 
 					camera_list[name].update({
 						key: value
-						for key, value in camera_config_options.items()
+						for key, value in requested_options.items()
 						if key in ALLOWED_SETTINGS
 					})
 
-			
+			camera_results = []
 			camera_results.append("Configured Camera Settings")
 			for name, options in camera_list.items():
-				camera_results.append(f'{options}')
+				for option, value in options.items():
+					if option == 'name':
+						camera_results.append(f'{value}')
+					else:
+						camera_results.append(f'\t--{option} = {value}')
 
-			camera_results.append("\n")
-			logger.info("\n".join(camera_results))
+			highlight_print(camera_results)
 
 			return camera_list
 		except Exception as e:

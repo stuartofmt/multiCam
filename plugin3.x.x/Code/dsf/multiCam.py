@@ -95,18 +95,25 @@ if __name__ == "__main__":
 	from get_config import parse_config, get_installed_cameras, configure_cameras
 
 	try:
-		UI, LOGGING, CAMERAS, CAMERA_CONFIGS = parse_config(CONFIGFILENAME,logger)
-		get_installed_cameras()
-		logger.info(f'{CAMERAS=}')
-		logger.info(f'{CAMERA_CONFIGS=}')
-		configured_cameras = configure_cameras(CAMERAS, CAMERA_CONFIGS)
-		logger.info(f'{configure_cameras}')
+		# Get info from congig file
+		UI, LOGGING, cameras_to_use, cameras_to_use_configs = parse_config(CONFIGFILENAME,logger)
 	except Exception as e:
 		logger.info(f'{e}')
 		force_quit(1)
 
+
 	# Set logging level
 	logger = set_log_level(LOGGING.LEVEL,logger)
+
+	# Set camera options to default values and override only if configured 
+	try:
+		installed_cameras = get_installed_cameras()
+		configured_cameras = configure_cameras(installed_cameras,cameras_to_use, cameras_to_use_configs)
+		logger.info(f'{configured_cameras}')
+	except Exception as e:
+		logger.info(f'{e}')
+		force_quit(1)
+
 
 	this_ip_address = getIP(UI.PORT)
 

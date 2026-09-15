@@ -24,7 +24,7 @@ class DefaultCameraOptions(Enum):
     balance = 1.0
 
 ALLOWED_OPTIONS = ["brightness","contrast","balance","saturation","autofocus","sharpness","autoexposure"]
-ALLOWED_SETTINGS = ['fps','width','height','jpegresolution']
+ALLOWED_SETTINGS = ['fps','width','height','jpegresolution','rotate']
 # ============================================================
 # Camera Defaults
 # ============================================================
