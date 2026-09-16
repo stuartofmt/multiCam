@@ -25,7 +25,8 @@ class DefaultCameraSettings(Enum):
     rotate = 0
 
 
-ALLOWED_SETTINGS = ['fps','width','height','jpegresolution','rotate']
+# ALLOWED_SETTINGS = ['fps','width','height','jpegresolution','rotate']
+NETWORK_TYPES = ['http://','https://','rtsp://']
 # ============================================================
 # Camera Defaults
 # ============================================================

@@ -50,14 +50,25 @@ def create_log_file(console_logger, logfile):
 
 		# Create handler for logfile
 		f_handler = logging.FileHandler(logfile, mode='w', encoding='utf-8')
-		f_format = logging.Formatter("%(asctime)s %(module)s - %(funcName)s:[%(levelname)s] %(message)s","%m-%d %H:%M:%S")
-		f_handler.setFormatter(f_format)
+		_set_file_formatter(console_logger, f_handler)
 		console_logger.addHandler(f_handler)
 		logger = console_logger
 		return True
 	except Exception as e:
 		raise Exception(f"{e}")
 		return False
+
+def _set_file_formatter(log, handler):
+	if log.level == logging.INFO:
+		f_format = logging.Formatter(
+			"%(asctime)s  %(message)s", "%m-%d %H:%M:%S"
+		)
+	else:
+		f_format = logging.Formatter(
+			"%(asctime)s %(module)s - %(funcName)s:[%(levelname)s] %(message)s",
+			"%m-%d %H:%M:%S",
+		)
+	handler.setFormatter(f_format)
 
 def set_log_level(log_level,logger):  
 	logger.debug(f'Log level changed to {log_level}')
@@ -68,5 +79,9 @@ def set_log_level(log_level,logger):
 		logger.setLevel(logging.INFO)
 	else: # warning
 		logger.setLevel(logging.WARNING)
+
+	for handler in logger.handlers:
+		if isinstance(handler, logging.FileHandler):
+			_set_file_formatter(logger, handler)
 
 	return logger

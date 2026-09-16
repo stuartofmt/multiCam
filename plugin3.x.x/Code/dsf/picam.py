@@ -13,20 +13,16 @@ class Picamera2Stream:
         width=640,
         height=480,
         copy_frame=False,
-        brightness=1.0,
-        contrast=1.0,
-        focus=1.0,
-        balance=1.0,
+        rotate=0,
+        jpegresolution=95,
     ):
         self.camera_index = camera_index
         self.fps = fps
         self.width = width
         self.height = height
         self.copy_frame = copy_frame
-        self.brightness = brightness
-        self.contrast = contrast
-        self.focus = focus
-        self.balance = balance
+        self.rotate = rotate
+        self.jpegresolution = jpegresolution
         self.picam2 = None
         self.thread = None
         self.running = False
@@ -39,35 +35,40 @@ class Picamera2Stream:
         if self.running:
             return
 
-        from picamera2 import Picamera2
+        try:
+            from picamera2 import Picamera2
 
-        width = int(self.width)
-        height = int(self.height)
-        fps = int(self.fps)
+            width = int(self.width)
+            height = int(self.height)
+            fps = int(self.fps)
 
-        self.picam2 = Picamera2(camera_num=self.camera_index)
-        configuration = self.picam2.create_video_configuration(
-            main={"size": (width, height), "format": "RGB888"}
-        )
-        self.picam2.configure(configuration)
+            self.picam2 = Picamera2(camera_num=self.camera_index)
+            configuration = self.picam2.create_video_configuration(
+                main={"size": (width, height), "format": "RGB888"}
+            )
+            self.picam2.configure(configuration)
 
-        for control_name, value in (
-            ("Brightness", float(self.brightness)),
-            ("Contrast", float(self.contrast)),
-            ("LensPosition", float(self.focus)),
-            ("AwbMode", int(self.balance)),
-        ):
-            try:
-                self.picam2.set_controls({control_name: value})
-            except Exception:
-                pass
+            self.fps = float(fps)
 
-        self.fps = float(fps)
+            self.picam2.start()
+            self.running = True
+            self.thread = threading.Thread(target=self._update, daemon=True)
+            self.thread.start()
+        except Exception as exc:
+            self.picam2 = None
+            self.running = False
+            raise RuntimeError(f"Unable to open picamera source {self.camera_index}: {exc}") from exc
 
-        self.picam2.start()
-        self.running = True
-        self.thread = threading.Thread(target=self._update, daemon=True)
-        self.thread.start()
+    def _apply_rotation(self, frame):
+        if frame is None or self.rotate == 0:
+            return frame
+        if self.rotate == 90:
+            return cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+        if self.rotate in (270, -90):
+            return cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        if self.rotate == 180:
+            return cv2.rotate(frame, cv2.ROTATE_180)
+        return frame
 
     def _update(self):
         frame_interval = 1.0 / self.fps
@@ -75,8 +76,13 @@ class Picamera2Stream:
             started = time.perf_counter()
             frame = self.picam2.capture_array()
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            frame = self._apply_rotation(frame)
 
-            success, encoded = cv2.imencode(".jpg", frame)
+            success, encoded = cv2.imencode(
+                ".jpg",
+                frame,
+                [int(cv2.IMWRITE_JPEG_QUALITY), int(self.jpegresolution)],
+            )
             if success:
                 jpg_bytes = encoded.tobytes()
                 if is_valid_jpeg_bytes(jpg_bytes):

@@ -7,7 +7,8 @@ Venv python install e.g.
 #! <path-to-virtual-environment/bin>python -u
 """
 
-#This is to supress the noisy libcam  MUST BE AT THE VERY START OF THE SCRIPT
+# This is to supress the noisy libcam
+# MUST BE AT THE VERY START OF THE SCRIPT
 import os
 os.environ["LIBCAMERA_LOG_LEVELS"] = "*:ERROR"
 
@@ -81,9 +82,6 @@ if __name__ == "__main__":
 	CONFIGFILENAME = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent / "config.ini"
 	LOGFILENAME = CONFIGFILENAME.parent / "multiCam.log"
 
-	# Create a logfile
-	script_name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
-
 	if not setup_log(progName,LOGFILENAME):
 		logger.error(f"Failed to setup logging to {LOGFILENAME}. Please ensure the file is writable.")
 		sys.exit(1)
@@ -95,7 +93,7 @@ if __name__ == "__main__":
 	from get_config import parse_config, get_installed_cameras, configure_cameras
 
 	try:
-		# Get info from congig file
+		# Get info from config file
 		UI, LOGGING, cameras_to_use, cameras_to_use_configs = parse_config(CONFIGFILENAME,logger)
 	except Exception as e:
 		logger.info(f'{e}')
@@ -109,15 +107,11 @@ if __name__ == "__main__":
 	try:
 		installed_cameras = get_installed_cameras()
 		configured_cameras = configure_cameras(installed_cameras,cameras_to_use, cameras_to_use_configs)
-		logger.info(f'{configured_cameras}')
 	except Exception as e:
 		logger.info(f'{e}')
 		force_quit(1)
 
-
 	this_ip_address = getIP(UI.PORT)
-
-	force_quit(1)
 
 	# Start uvicorn in a background thread
 	def run_server():
@@ -136,7 +130,7 @@ if __name__ == "__main__":
 	time.sleep(2)
 
 	with httpx.Client() as client:
-		for camera_name, camera_settings in CAMERAS.items():
+		for camera_name, camera_settings in configured_cameras.items():
 			try:
 				camera_payload = camera_settings
 				response = client.post(

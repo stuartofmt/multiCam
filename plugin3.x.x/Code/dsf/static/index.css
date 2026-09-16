@@ -58,3 +58,13 @@ h1 {
 
     background: black;
 }
+
+.empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 120px;
+    color: #ccc;
+    font-size: 1.1rem;
+    text-align: center;
+}

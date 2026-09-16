@@ -12,6 +12,14 @@ async function loadCameras() {
 
     grid.innerHTML = "";
 
+    if (!data.cameras || data.cameras.length === 0) {
+        const emptyState = document.createElement("div");
+        emptyState.className = "camera-card empty-state";
+        emptyState.textContent = "No cameras configured.";
+        grid.appendChild(emptyState);
+        return;
+    }
+
     for (const cameraName of data.cameras) {
 
         const card = document.createElement("div");

@@ -25,17 +25,15 @@ from multi_camera import MultiCameraManager, is_valid_jpeg_bytes
 
 class CameraConfig(BaseModel):
     name: str
-    source: str
-    cameratype: str = "USB"
-    fps: float = DefaultCameraSettings.fps.value
-    width: Optional[int] = DefaultCameraSettings.width.value
-    height: Optional[int] = DefaultCameraSettings.height.value
+    source: str | int
+    cameratype: str
+    fps: float
+    width: Optional[int]
+    height: Optional[int]
     api_preference: Optional[int] = None
     copy_frame: bool = False
-    #brightness: float = DefaultCameraSettings.brightness.value
-    #contrast: float = DefaultCameraSettings.contrast.value
-    #focus: float = DefaultCameraSettings.focus.value
-    #balance: float = DefaultCameraSettings.balance.value
+    rotate: int = 0
+    jpegresolution: int = 95
 
 
 # ============================================================
@@ -113,10 +111,8 @@ async def api_add_camera(config: CameraConfig):
             height=config.height,
             api_preference=config.api_preference,
             copy_frame=config.copy_frame,
-            brightness=config.brightness,
-            contrast=config.contrast,
-            focus=config.focus,
-            balance=config.balance,
+            rotate=config.rotate,
+            jpegresolution=config.jpegresolution,
             cameratype=config.cameratype,
         )
         return {"status": "success", "name": config.name}

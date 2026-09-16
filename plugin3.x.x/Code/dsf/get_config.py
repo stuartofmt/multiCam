@@ -3,9 +3,8 @@ import os
 import re
 import subprocess
 import glob
-from defaults import DefaultCameraSettings, ALLOWED_OPTIONS, ALLOWED_SETTINGS
+from defaults import DefaultCameraSettings, ALLOWED_OPTIONS, NETWORK_TYPES
 from logger_module import logger
-from multiCam import force_quit
 
 # --- CSI cameras via picamera2 ---
 from picamera2 import Picamera2
@@ -170,7 +169,7 @@ def get_camera_options_usb(camera_name, source):
 
 		return {source: writable_controls}
 	except Exception as e:
-		raise Exception('Issue setting camera defaults')
+		raise Exception(f'Issue setting camera defaults - {e}')
 
 
 def set_controls_usb(controls_by_source, camera_config_options=None):
@@ -225,9 +224,6 @@ def set_controls_usb(controls_by_source, camera_config_options=None):
 			min_val = bounds.get("min")
 			max_val = bounds.get("max")
 
-			print(f'{value=}')
-			print(f'{default_val=}')
-
 			if value is None:
 				logger.debug(f"[{source}] {canonical_name}: no value to set, skipping")
 				results[canonical_name] = False
@@ -247,7 +243,7 @@ def set_controls_usb(controls_by_source, camera_config_options=None):
 					capture_output=True,
 					text=True,
 				)
-				logger.info(f"[{source}] {canonical_name} ({real_name}): set to {value}")
+				logger.debug(f"[{source}] {canonical_name} ({real_name}): set to {value}")
 				results[canonical_name] = True
 			except subprocess.CalledProcessError as e:
 				logger.debug(f"[{source}] {canonical_name} ({real_name}) not settable: {e.stderr}")
@@ -313,7 +309,7 @@ def get_camera_options_picam(camera_name, source):
 		try:
 			picam2.set_controls({real_name: default_val})
 			picam2.capture_metadata()  # force it to actually apply
-			logger.info(f"[{camera_name}] {real_name}: reset to default={default_val}")
+			logger.debug(f"[{camera_name}] {real_name}: reset to default={default_val}")
 		except Exception as e:
 			logger.debug(f"[{camera_name}] {real_name} not settable: {e}")
 			continue
@@ -332,7 +328,7 @@ def get_camera_options_picam(camera_name, source):
 		}
 
 	picam2.close()
-	print(f'PI CONTROLS = {writable_controls}')
+	logger.debug(f'PI CONTROLS = {writable_controls}')
 	return {source: writable_controls}
 
 
@@ -363,10 +359,6 @@ def set_controls_picam(controls_by_source, camera_config_options=None):
 		{canonical_name: True/False} indicating whether the set succeeded.
 	"""
 
-	print(f'{controls_by_source=}')
-	print(f'{camera_config_options=}')
-
-
 	results_by_source = {}
 
 	for source, controls in controls_by_source.items():
@@ -395,8 +387,6 @@ def set_controls_picam(controls_by_source, camera_config_options=None):
 			min_val = bounds.get("min")
 			max_val = bounds.get("max")
 
-			print(f'PICAM {value=}')
-			print(f'PICAM {default_val=}')
 			try:
 				if value is None:
 					logger.debug(f"[{source}] {canonical_name}: no value to set, skipping")
@@ -416,7 +406,7 @@ def set_controls_picam(controls_by_source, camera_config_options=None):
 			try:
 				picam2.set_controls({real_name: value})
 				picam2.capture_metadata()  # force it to actually apply
-				logger.info(f"[{source}] {canonical_name} ({real_name}): set to {value}")
+				logger.debug(f"[{source}] {canonical_name} ({real_name}): set to {value}")
 				results[canonical_name] = True
 			except Exception as e:
 				logger.debug(f"[{source}] {canonical_name} ({real_name}) not settable: {e}")
@@ -547,13 +537,8 @@ def find_usb_cameras():
 
 def find_pi_cameras():
 
-	pi_cameras = []
 	try:
-		cameras = Picamera2.global_camera_info()
-		for index, cam_info in enumerate(cameras):
-			if 'usb' in cam_info['Id'].lower():  # Ignore USB Cameras in this section
-				continue  # Skip
-			pi_cameras.append((index))
+		pi_cameras = list(range(len(get_pi_camera_indices())))
 
 		camera_results = []
 		if pi_cameras:
@@ -568,6 +553,31 @@ def find_pi_cameras():
 		return pi_cameras
 	except Exception as e:
 		raise Exception(f"Error listing Pi cameras - {e}")
+
+
+def get_pi_camera_indices():
+	"""Return Picamera2 slots belonging to non-USB cameras."""
+	cameras = Picamera2.global_camera_info()
+	return [
+		index
+		for index, cam_info in enumerate(cameras)
+		if 'usb' not in cam_info.get('Id', '').lower()
+	]
+
+
+def resolve_pi_camera_index(camera_number):
+	"""Resolve a user-facing Pi-camera ordinal to its Picamera2 slot."""
+	if camera_number < 0:
+		raise ValueError(
+			f'PICAMERAS index {camera_number} does not identify a Pi camera'
+		)
+	pi_camera_indices = get_pi_camera_indices()
+	try:
+		return pi_camera_indices[camera_number]
+	except IndexError as e:
+		raise ValueError(
+			f'PICAMERAS index {camera_number} does not identify a Pi camera'
+		) from e
 
 
 def parse_config(config_file,logger):
@@ -624,9 +634,10 @@ def parse_config(config_file,logger):
 
 			for name, source in config['PICAMERAS'].items():
 				try:
-					source = int(source)
+					camera_number = int(source)
 				except ValueError:
 					raise ValueError(f'PICAMERAS entry {name} must be an integer camera index')
+				source = resolve_pi_camera_index(camera_number)
 				CAMERAS[name], CAMERA_CONFIG[name] = get_config_from_file(config, name, source,"PICAMERA")
 			# Check CAMERAS and PICAMERAS are not both empty
 			if CAMERAS == {}:
@@ -667,33 +678,47 @@ def get_installed_cameras():
 	
 def configure_cameras(installed_cameras,camera_list,requested_options):
 			# Assemble the camera configurations
-		print(f'{camera_list=}')
-		print(f'{requested_options=}')
-		print(f'{installed_cameras=}')
+		logger.debug(f'{camera_list=}')
+		logger.debug(f'{requested_options=}')
+		logger.debug(f'{installed_cameras=}')
 		try:
 			for name, details in camera_list.items():
+				if details['source'] not in installed_cameras:
+					logger.warning(f'Camera source {details['source']} is not installed')
+					continue
 				#Ignore http etc
 				if details['cameratype'] == 'USB':
 					camera_options = get_camera_options_usb(name,details['source'])
-					print(camera_options)
+					logger.debug(camera_options)
 					set_controls_usb(camera_options,requested_options[name])
 
 					camera_list[name].update({
 						key: value
 						for key, value in requested_options.items()
-						if key in ALLOWED_SETTINGS
+						if key in DefaultCameraSettings.__members__
 					})
 
 				elif details['cameratype'] == 'PICAMERA':
 					camera_options = get_camera_options_picam(name,details['source'])
-					print(f'{camera_options=}')
+					logger.debug(f'{camera_options=}')
 					set_controls_picam(camera_options,requested_options[name])
 
 					camera_list[name].update({
 						key: value
 						for key, value in requested_options.items()
-						if key in ALLOWED_SETTINGS
+						if key in DefaultCameraSettings.__members__
 					})
+
+
+			# Remove any invalid cameras
+			for camera, details in list(camera_list.items()):
+				if (details['source'] not in installed_cameras) and not any(
+					details['source'].startswith(network_type)
+					for network_type in NETWORK_TYPES
+				):
+					camera_list.pop(camera) 
+					logger.debug(f'Camera {camera} with source {details['source']} removed')
+
 
 			camera_results = []
 			camera_results.append("Configured Camera Settings")
