@@ -37,6 +37,7 @@
 ;Cam1=/dev/video0
 ;Cam2=/dev/video2
 ;IP Camera=http://192.168.30.31:8081
+testcam=rtsp://9627b0bf2a7b.entrypoint.cloud.wowza.com:1935/app-p5260J38/66abe4b9_stream1
 
 [PICAMERAS]
 # Each entry adds one Picamera.

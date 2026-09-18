@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from starlette.requests import Request
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -27,13 +27,33 @@ class CameraConfig(BaseModel):
     name: str
     source: str | int
     cameratype: str
-    fps: float
-    width: Optional[int]
-    height: Optional[int]
+    fps: Optional[float] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
     api_preference: Optional[int] = None
     copy_frame: bool = False
     rotate: int = 0
     jpegresolution: int = 95
+
+    @model_validator(mode="after")
+    def validate_camera_type_settings(self):
+        camera_type = self.cameratype.upper()
+        if camera_type in {"USB", "PICAMERA"}:
+            missing = [
+                field for field in ("fps", "width", "height")
+                if getattr(self, field) is None
+            ]
+            if missing:
+                raise ValueError(
+                    f"{camera_type} cameras require: {', '.join(missing)}"
+                )
+        elif camera_type == "STREAM":
+            self.fps = self.fps or DefaultCameraSettings.fps.value
+            self.width = None
+            self.height = None
+        else:
+            raise ValueError(f"Unsupported camera type: {self.cameratype}")
+        return self
 
 
 # ============================================================

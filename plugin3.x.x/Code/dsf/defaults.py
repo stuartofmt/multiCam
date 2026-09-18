@@ -24,6 +24,10 @@ class DefaultCameraSettings(Enum):
     jpegresolution = 95
     rotate = 0
 
+class DefaultNetworkCameraSettings(Enum):
+    jpegresolution = 95
+    rotate = 0
+
 
 # ALLOWED_SETTINGS = ['fps','width','height','jpegresolution','rotate']
 NETWORK_TYPES = ['http://','https://','rtsp://']

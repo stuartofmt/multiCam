@@ -1,5 +1,6 @@
 asyncio
 configparser
+copy
 enum
 fastapi
 glob

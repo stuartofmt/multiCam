@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 import time
 import threading
+import os
 
 from typing import Dict, Optional
 from defaults import DEFAULT_JPEG_QUALITY, DefaultCameraSettings,NETWORK_TYPES
@@ -34,6 +35,13 @@ class CameraStream:
 	"""
 	Single background camera stream.
 	"""
+
+	# Guards the brief window where OPENCV_FFMPEG_CAPTURE_OPTIONS is set,
+	# a VideoCapture is opened, and the env var is restored. This env var
+	# is process-wide, not per-capture, so if camera startup is ever made
+	# concurrent (e.g. threaded), this lock keeps opens from stepping on
+	# each other. Safe (and unused) for sequential startup too.
+	_ffmpeg_env_lock = threading.Lock()
 
 	def __init__(
 		self,
@@ -82,10 +90,22 @@ class CameraStream:
 			return
 
 
+		is_network_source = (
+			isinstance(self.source, str)
+			and any(self.source.startswith(network_type) for network_type in NETWORK_TYPES)
+		)
+		is_rtsp_source = (
+			isinstance(self.source, str)
+			and self.source.startswith("rtsp://")
+		)
+		is_http_source = (
+			isinstance(self.source, str)
+			and (self.source.startswith("http://") or self.source.startswith("https://"))
+		)
+
 		logger_module.logger.debug(
-			f"Opening "
-			f"{self.source} "
-			f"using V4L2"
+			f"Opening {self.source} "
+			f"using {'network backend' if is_network_source else 'V4L2'}"
 		)
 
 		#
@@ -100,7 +120,51 @@ class CameraStream:
 			else:
 				backend = cv2.CAP_V4L2
 
-		self.capture = cv2.VideoCapture(self.source, backend)
+		#
+		# FFmpeg capture options differ by source type:
+		# - RTSP: force TCP transport to avoid incomplete/corrupt packets
+		#   that UDP can produce.
+		# - HTTP/HTTPS: enable reconnect behavior, since IP cameras over
+		#   HTTP MJPEG drop connections more readily than RTSP.
+		#
+		# OPENCV_FFMPEG_CAPTURE_OPTIONS is a process-wide environment
+		# variable, not a per-VideoCapture setting. It's read once, at
+		# VideoCapture construction time, so we set it immediately before
+		# opening this camera and restore whatever was there immediately
+		# after. This keeps one camera's ffmpeg options from leaking into
+		# another camera opened later in the same process. The lock only
+		# needs to cover this narrow window; already-open captures are
+		# unaffected by later env var changes.
+		#
+		if is_rtsp_source:
+			ffmpeg_opts = "rtsp_transport;tcp"
+		elif is_http_source:
+			ffmpeg_opts = "reconnect;1|reconnect_streamed;1|reconnect_delay_max;2"
+		else:
+			ffmpeg_opts = None
+
+		with CameraStream._ffmpeg_env_lock:
+
+			old_ffmpeg_opts = os.environ.get("OPENCV_FFMPEG_CAPTURE_OPTIONS")
+
+			if ffmpeg_opts is not None:
+				os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = ffmpeg_opts
+			else:
+				os.environ.pop("OPENCV_FFMPEG_CAPTURE_OPTIONS", None)
+
+			try:
+				self.capture = cv2.VideoCapture(self.source, backend)
+			finally:
+				if old_ffmpeg_opts is not None:
+					os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = old_ffmpeg_opts
+				else:
+					os.environ.pop("OPENCV_FFMPEG_CAPTURE_OPTIONS", None)
+
+		# Allow some settling time
+		self.capture.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000)
+		self.capture.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 10000)
+
+
 
 		if not self.capture.isOpened():
 
@@ -109,38 +173,32 @@ class CameraStream:
 				f"{self.source}"
 			)
 
-		#
-		# Force MJPEG mode
-		#
-		self.capture.set(
-			cv2.CAP_PROP_FOURCC,
-			cv2.VideoWriter.fourcc(*'MJPG')
-		)
-
-		#
-		# Resolution
-		#
-		if self.width is not None:
-
+		if not is_network_source:
+			# MJPG and frame-size negotiation apply to local V4L2 devices.
+			# Sending these properties to an RTSP/FFmpeg capture can interfere
+			# with the codec selected by the network source.
 			self.capture.set(
-				cv2.CAP_PROP_FRAME_WIDTH,
-				int(self.width)
+				cv2.CAP_PROP_FOURCC,
+				cv2.VideoWriter.fourcc(*'MJPG')
 			)
 
-		if self.height is not None:
+			if self.width is not None:
+				self.capture.set(
+					cv2.CAP_PROP_FRAME_WIDTH,
+					int(self.width)
+				)
 
-			self.capture.set(
-				cv2.CAP_PROP_FRAME_HEIGHT,
-				int(self.height)
-			)
+			if self.height is not None:
+				self.capture.set(
+					cv2.CAP_PROP_FRAME_HEIGHT,
+					int(self.height)
+				)
 
-		#
-		# FPS
-		#
-		# self.capture.set(
-		#     cv2.CAP_PROP_FPS,
-		#     int(self.fps)
-		# )
+			if self.fps is not None:
+				self.capture.set(
+					cv2.CAP_PROP_FPS,
+					float(self.fps)
+				)
 
 		#
 		# Attempt to apply supported camera properties.
@@ -183,7 +241,13 @@ class CameraStream:
 				f"{self.source}"
 			)
 
-		logger_module.logger.debug("Camera opened successfully")
+		try:
+			backend_name = self.capture.getBackendName()
+		except Exception:
+			backend_name = "unknown"
+		logger_module.logger.debug(
+			f"Camera opened successfully using backend {backend_name}"
+		)
 
 		self.running = True
 
@@ -214,27 +278,8 @@ class CameraStream:
 		Background frame capture loop.
 		"""
 
-		next_frame_time = time.perf_counter()
-
 		while self.running:
-
-			current_time = time.perf_counter()
-
-			#
-			# FPS limiting
-			#
-			if current_time < next_frame_time:
-
-				time.sleep(
-					next_frame_time - current_time
-				)
-
-			#
-			# Prevent timing drift
-			#
-			next_frame_time = (
-				current_time + self.frame_interval
-			)
+			# Capture continuously; the device controls the frame rate.
 
 			if self.capture is None:
 				raise RuntimeError(
