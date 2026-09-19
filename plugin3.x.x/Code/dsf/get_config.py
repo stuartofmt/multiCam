@@ -283,6 +283,9 @@ FORMAT_ALIASES = {
 	"MJPEG": "MJPG",
 }
 
+# Fallback format sequence if requested format is unavailable
+FORMAT_FALLBACK_SEQUENCE = ["MJPG", "YUYV", "YUY2"]
+
 FORMAT_LINE_RE = re.compile(r"^\s*\[\d+\]:\s*'(\w+)'")
 SIZE_LINE_RE = re.compile(r"Size:\s*Discrete\s*(\d+)x(\d+)")
 FPS_LINE_RE = re.compile(r"\(([\d.]+)\s*fps\)")
@@ -441,7 +444,17 @@ def validate_usb_camera_configs(cameras: Dict[str, dict]) -> Dict[str, dict]:
 			if requested_format in formats:
 				chosen_format = requested_format
 			else:
-				chosen_format = next(iter(formats))  # first reported format
+				# Try fallback sequence if requested format not available
+				chosen_format = None
+				for fallback_fmt in FORMAT_FALLBACK_SEQUENCE:
+					if fallback_fmt in formats:
+						chosen_format = fallback_fmt
+						break
+
+				# If no fallback worked, use first available format
+				if chosen_format is None:
+					chosen_format = next(iter(formats))
+
 				logger.info(
 					f"[{cam_name}] Format '{cam.get('format')}' not supported on "
 					f"{source}; Adjusting to '{chosen_format}'"
@@ -794,6 +807,16 @@ def find_usb_cameras():
 		camera_results.append("USB camera found at these devices:")
 		for dev in usb_devices:
 			camera_results.append(f"-- {dev}")
+			try:
+				camera_options = get_camera_options_usb(f"USB-{dev}", dev)
+				if camera_options.get(dev):
+					for control_name, bounds in camera_options[dev].items():
+						min_val = bounds.get("min", "N/A")
+						max_val = bounds.get("max", "N/A")
+						default_val = bounds.get("default", "N/A")
+						camera_results.append(f"   {control_name}: min={min_val}, max={max_val}, default={default_val}")
+			except Exception as e:
+				logger.debug(f"Could not query options for {dev}: {e}")
 	else:
 		camera_results.append("No USB cameras were found.")
 
@@ -812,6 +835,17 @@ def find_pi_cameras():
 			camera_results.append(f"PiCameras found:")
 			for index in pi_cameras:
 				camera_results.append(f"--index {index}")
+				try:
+					pi_camera_index = get_pi_camera_indices()[index]
+					camera_options = get_camera_options_picam(f"PiCamera-{index}", pi_camera_index)
+					if camera_options.get(pi_camera_index):
+						for control_name, bounds in camera_options[pi_camera_index].items():
+							min_val = bounds.get("min", "N/A")
+							max_val = bounds.get("max", "N/A")
+							default_val = bounds.get("default", "N/A")
+							camera_results.append(f"   {control_name}: min={min_val}, max={max_val}, default={default_val}")
+				except Exception as e:
+					logger.debug(f"Could not query options for camera index {index}: {e}")
 		else:
 			camera_results.append("No Pi cameras found.")
 
