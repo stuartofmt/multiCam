@@ -394,7 +394,7 @@ def _next_lower_fps(
 	return lower[0] if lower else by_fps_desc[0]
 
 
-def validate_camera_configs(cameras: Dict[str, dict]) -> Dict[str, dict]:
+def validate_usb_camera_configs(cameras: Dict[str, dict]) -> Dict[str, dict]:
 	"""
 	Takes a dict of camera configs keyed by camera name, e.g.:
 
@@ -705,7 +705,14 @@ def get_config_from_file(config, name, source, cameratype):
 		default_camera_settings = {
 			setting.name: setting.value for setting in DefaultNetworkCameraSettings
 		}
-		file_settings = {}
+		valid_network_settings = {
+			setting.name for setting in DefaultNetworkCameraSettings
+		}
+		file_settings = {
+			key: value
+			for key, value in file_settings.items()
+			if key in valid_network_settings
+		}
 		mpeg_default = {}
 
 	camera_settings = {
@@ -859,7 +866,7 @@ def parse_config(config_file,logger):
 			ui_section = config_dict["UI"]
 			logging_section = config_dict["LOGGING"]
 
-			#Change the keys to UPPER for UI and LOGGING, but not for CAMERAS or PICAMERAS	
+			#Change the keys to UPPER for UI and LOGGING, but not for USBCAMERAS or PICAMERAS	
 			config_dict_ui = {k.upper():v for k,v in ui_section.items()}
 			config_dict_logging = {k.upper():v for k,v in logging_section.items()}
 
@@ -886,11 +893,9 @@ def parse_config(config_file,logger):
 			CAMERAS = {}
 			CAMERA_CONFIG = {}
 
-			for name, source in config['CAMERAS'].items():
+			for name, source in config['USBCAMERAS'].items():
 				if source.startswith('/dev/video'):
 					CAMERAS[name], CAMERA_CONFIG[name] = get_config_from_file(config, name, source,"USB")
-				else:
-					CAMERAS[name], CAMERA_CONFIG[name] = get_config_from_file(config, name, source,"STREAM")
 
 			for name, source in config['PICAMERAS'].items():
 				try:
@@ -899,9 +904,17 @@ def parse_config(config_file,logger):
 					raise ValueError(f'PICAMERAS entry {name} must be an integer camera index')
 				source = resolve_pi_camera_index(camera_number)
 				CAMERAS[name], CAMERA_CONFIG[name] = get_config_from_file(config, name, source,"PICAMERA")
-			# Check CAMERAS and PICAMERAS are not both empty
+			# Check USBCAMERAS and PICAMERAS are not both empty
+
+			for name, source in config['STREAMS'].items():
+				if any(
+                    source.startswith(network_type)
+                    for network_type in NETWORK_TYPES
+                ):
+					CAMERAS[name], CAMERA_CONFIG[name] = get_config_from_file(config, name, source,"STREAM")
+
 			if CAMERAS == {}:
-				raise ValueError('At least one camera must be specified in CAMERAS or PICAMERAS')		
+				raise ValueError('At least one camera must be specified in USBCAMERAS or PICAMERAS')		
 
 			# All tests passed - log effective configuration
 			camera_results = []
@@ -931,7 +944,8 @@ def get_installed_cameras():
 	try:
 		usb_cameras = find_usb_cameras()
 		pi_cameras = find_pi_cameras()
-		return usb_cameras + pi_cameras
+
+		return usb_cameras + pi_cameras 
 	except Exception as e:
 		raise Exception(f'{e}')
 
@@ -946,42 +960,44 @@ def configure_cameras(installed_cameras,camera_list,requested_options):
 				if (details['source'] not in installed_cameras) and (details['cameratype'] != 'STREAM'):
 					logger.warning(f'Camera source {details['source']} is not installed')
 					continue
-				#Ignore http etc
+
+				# Get and set camera options for USB and Pi cameras - No need for streams
 				if details['cameratype'] == 'USB':
 					camera_options = get_camera_options_usb(name,details['source'])
 					logger.debug(camera_options)
 					set_controls_usb(camera_options,requested_options[name])
-
-					camera_list[name].update({
-						key: value
-						for key, value in requested_options.items()
-						if key in DefaultCameraSettings.__members__
-					})
 
 				elif details['cameratype'] == 'PICAMERA':
 					camera_options = get_camera_options_picam(name,details['source'])
 					logger.debug(f'{camera_options=}')
 					set_controls_picam(camera_options,requested_options[name])
 
-					camera_list[name].update({
-						key: value
-						for key, value in requested_options.items()
-						if key in DefaultCameraSettings.__members__
-					})
+				elif details['cameratype'] == 'STREAM':
+					logger.debug(f'Skipping camera controls for stream {name}')
+	
+				else:
+					logger.warning(f'Unrecognized camera type {details['cameratype']}')
+					continue
+
+				camera_list[name].update({
+				key: value
+				for key, value in requested_options.items()
+				if key in DefaultCameraSettings.__members__
+				})			
 
 
-			# Remove any invalid cameras
+
+			# Remove any cameras that are not present
 			for camera, details in list(camera_list.items()):
-				if (details['source'] not in installed_cameras) and not any(
-					details['source'].startswith(network_type)
-					for network_type in NETWORK_TYPES
-				):
+				if (details['source'] not in installed_cameras) and (details['cameratype'] != 'STREAM'):
 					camera_list.pop(camera) 
 					logger.debug(f'Camera {camera} with source {details['source']} removed')
 					continue
 
+				print(f'\n ========= {camera_list=} \n =======')
+
 				# Validate this camera's format, resolution, and fps.
-				validated_camera = validate_camera_configs({camera: details})
+				validated_camera = validate_usb_camera_configs({camera: details})
 				camera_list[camera] = validated_camera[camera]
 
 
@@ -999,4 +1015,5 @@ def configure_cameras(installed_cameras,camera_list,requested_options):
 
 			return camera_list
 		except Exception as e:
-			raise Exception(f'Error setting camera options {e}')
+			logger.exception('Camera option setup failed')
+			raise Exception(f'Error setting camera options {e}') from e

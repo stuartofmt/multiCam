@@ -177,10 +177,11 @@ async def mjpeg_generator(request: Request, camera_name: str):
             await asyncio.sleep(0.1)
             continue
 
+        jpeg_quality = getattr(camera, "jpegresolution", DEFAULT_JPEG_QUALITY)
         success, encoded = cv2.imencode(
             ".jpg",
             frame,
-            [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY],
+            [int(cv2.IMWRITE_JPEG_QUALITY), int(jpeg_quality)],
         )
 
         if not success:

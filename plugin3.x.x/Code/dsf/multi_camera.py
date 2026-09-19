@@ -12,7 +12,7 @@ import threading
 import os
 
 from typing import Dict, Optional
-from defaults import DEFAULT_JPEG_QUALITY, DefaultCameraSettings,NETWORK_TYPES
+
 import logger_module
 
 
@@ -46,6 +46,7 @@ class CameraStream:
 	def __init__(
 		self,
 		source,
+		cameratype: Optional[str],
 		fps: float,
 		width: Optional[int],
 		height: Optional[int],
@@ -56,6 +57,7 @@ class CameraStream:
 	):
 
 		self.source = source
+		self.cameratype = cameratype
 
 		self.fps = fps
 		self.frame_interval = 1.0 / fps
@@ -91,8 +93,9 @@ class CameraStream:
 
 
 		is_network_source = (
+			self.cameratype == "STREAM"
+			and
 			isinstance(self.source, str)
-			and any(self.source.startswith(network_type) for network_type in NETWORK_TYPES)
 		)
 		is_rtsp_source = (
 			isinstance(self.source, str)
@@ -114,8 +117,7 @@ class CameraStream:
 		if self.api_preference:
 			backend = self.api_preference
 		elif isinstance(self.source, str):
-			if any(self.source.startswith(network_type)
-				for network_type in NETWORK_TYPES):
+			if self.cameratype == "STREAM":
 				backend = cv2.CAP_ANY
 			else:
 				backend = cv2.CAP_V4L2
@@ -328,7 +330,6 @@ class CameraStream:
 				return None
 
 			frame = self.frame.copy() if self.copy_frame else self.frame
-			frame = self._apply_rotation(frame)
 
 			# Apply image adjustments
 			# if self.contrast != 1.0:
@@ -424,6 +425,7 @@ class MultiCameraManager:
 		else:
 			self.cameras[name] = CameraStream(
 				source=source,
+				cameratype=cameratype,
 				fps=fps,
 				width=width,
 				height=height,
