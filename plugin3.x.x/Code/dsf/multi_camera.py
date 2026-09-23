@@ -54,6 +54,7 @@ class CameraStream:
 		copy_frame: bool,
 		rotate: int,
 		jpegresolution: int,
+		format: Optional[str] = None,
 	):
 
 		self.source = source
@@ -71,6 +72,7 @@ class CameraStream:
 
 		self.rotate = rotate
 		self.jpegresolution = jpegresolution
+		self.format = format
 
 		self.capture: Optional[cv2.VideoCapture] = None
 		self.thread: Optional[threading.Thread] = None
@@ -166,8 +168,6 @@ class CameraStream:
 		self.capture.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000)
 		self.capture.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 10000)
 
-
-
 		if not self.capture.isOpened():
 
 			raise RuntimeError(
@@ -179,9 +179,10 @@ class CameraStream:
 			# MJPG and frame-size negotiation apply to local V4L2 devices.
 			# Sending these properties to an RTSP/FFmpeg capture can interfere
 			# with the codec selected by the network source.
+			fourcc_str = self.format if self.format else 'MJPG'
 			self.capture.set(
 				cv2.CAP_PROP_FOURCC,
-				cv2.VideoWriter.fourcc(*'MJPG')
+				cv2.VideoWriter.fourcc(*fourcc_str)
 			)
 
 			if self.width is not None:
@@ -266,6 +267,15 @@ class CameraStream:
 		if frame is None or self.rotate == 0:
 			return frame
 
+		# Adjust rotation angle if not cardinal
+		if self.rotate < 0:
+			self.rotate = -90
+		else:
+			self.rotate = int((self.rotate + 45) // 90) * 90
+		if self.rotate >= 360:
+			self.rotate = 0
+		
+
 		if self.rotate == 90:
 			return cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
 		if self.rotate in (270, -90):
@@ -311,6 +321,9 @@ class CameraStream:
 				if success:
 					jpg_bytes = encoded.tobytes()
 					if not is_valid_jpeg_bytes(jpg_bytes):
+						logger_module.logger.warning(
+							f"Rejected corrupt JPEG for camera {self.source}"
+						)
 						continue
 					with self.lock:
 						self.cached_jpeg = jpg_bytes
@@ -403,6 +416,7 @@ class MultiCameraManager:
 		rotate: int,
 		jpegresolution: int,
 		cameratype: Optional[str],
+		format: Optional[str] = None,
 	):
 
 		if name in self.cameras:
@@ -433,6 +447,7 @@ class MultiCameraManager:
 				copy_frame=copy_frame,
 				rotate=rotate,
 				jpegresolution=jpegresolution,
+				format=format,
 			)
 
 	def start(self):

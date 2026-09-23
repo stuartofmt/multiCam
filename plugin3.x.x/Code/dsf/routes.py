@@ -17,6 +17,8 @@ from defaults import (
     DefaultCameraSettings,
 )
 from multi_camera import MultiCameraManager, is_valid_jpeg_bytes
+import logger_module
+
 
 # ============================================================
 # Pydantic Models
@@ -34,6 +36,7 @@ class CameraConfig(BaseModel):
     copy_frame: bool = False
     rotate: int = 0
     jpegresolution: int = 95
+    format: Optional[str] = None
 
     @model_validator(mode="after")
     def validate_camera_type_settings(self):
@@ -134,6 +137,7 @@ async def api_add_camera(config: CameraConfig):
             rotate=config.rotate,
             jpegresolution=config.jpegresolution,
             cameratype=config.cameratype,
+            format=config.format,
         )
         return {"status": "success", "name": config.name}
     except Exception as e:
@@ -165,44 +169,54 @@ async def mjpeg_generator(request: Request, camera_name: str):
     fps = getattr(camera, "fps", DefaultCameraSettings.fps.value)
     stream_interval = 1.0 / fps if fps > 0 else 1.0 / DefaultCameraSettings.fps.value
 
+    frame_count = 0
+    last_timestamp = None
+
     while True:
         if await request.is_disconnected():
-            print(f"Client disconnected: {camera_name}")
+            logger_module.logger.debug(f"Client disconnected: {camera_name}")
             break
 
-        start = time.perf_counter()
-        frame = manager.get_frame(camera_name)
+        try:
+            start = time.perf_counter()
 
-        if frame is None:
-            await asyncio.sleep(0.1)
-            continue
+            # Use pre-cached JPEG from camera thread (already encoded)
+            jpg_bytes = manager.get_jpeg(camera_name)
 
-        jpeg_quality = getattr(camera, "jpegresolution", DEFAULT_JPEG_QUALITY)
-        success, encoded = cv2.imencode(
-            ".jpg",
-            frame,
-            [int(cv2.IMWRITE_JPEG_QUALITY), int(jpeg_quality)],
-        )
+            if jpg_bytes is None or not is_valid_jpeg_bytes(jpg_bytes):
+                await asyncio.sleep(0.01)
+                continue
 
-        if not success:
-            continue
+            # Defensive copy to avoid race with camera thread rewriting cache
+            jpg_bytes = bytes(jpg_bytes)
 
-        jpg_bytes = encoded.tobytes()
-        if not is_valid_jpeg_bytes(jpg_bytes):
-            continue
+            # Skip duplicate frames to maintain FPS
+            frame, timestamp = manager.get_frame_with_timestamp(camera_name)
+            if timestamp is not None and timestamp == last_timestamp:
+                await asyncio.sleep(0.01)
+                continue
+            last_timestamp = timestamp
 
-        yield (
-            b"--frame\r\n"
-            b"Content-Type: image/jpeg\r\n\r\n" +
-            jpg_bytes +
-            b"\r\n"
-        )
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n"
+                b"Content-Length: " + str(len(jpg_bytes)).encode() + b"\r\n\r\n" +
+                jpg_bytes +
+                b"\r\n"
+            )
 
-        elapsed = time.perf_counter() - start
-        sleep_time = stream_interval - elapsed
+            frame_count += 1
+            if frame_count % 100 == 0:
+                logger_module.logger.debug(f"[{camera_name}] Streamed {frame_count} frames")
 
-        if sleep_time > 0:
-            await asyncio.sleep(sleep_time)
+            elapsed = time.perf_counter() - start
+            sleep_time = stream_interval - elapsed
+
+            if sleep_time > 0:
+                await asyncio.sleep(sleep_time)
+        except Exception as e:
+            logger_module.logger.error(f"Error in mjpeg_generator for {camera_name}: {e}")
+            break
 
 
 @app.get("/streaming/{camera_name}")
