@@ -2,17 +2,16 @@ import cv2
 import threading
 import time
 
-from multi_camera import is_valid_jpeg_bytes
+from multi_camera import ClientTracking
 
 
-class Picamera2Stream:
+class Picamera2Stream(ClientTracking):
     def __init__(
         self,
         camera_index=0,
         fps=30.0,
         width=640,
         height=480,
-        copy_frame=False,
         rotate=0,
         jpegresolution=95,
     ):
@@ -20,16 +19,15 @@ class Picamera2Stream:
         self.fps = fps
         self.width = width
         self.height = height
-        self.copy_frame = copy_frame
         self.rotate = rotate
         self.jpegresolution = jpegresolution
         self.picam2 = None
         self.thread = None
         self.running = False
         self.lock = threading.Lock()
-        self.frame = None
         self.cached_jpeg = None
         self.timestamp = 0.0
+        self._init_clients()
 
     def start(self):
         if self.running:
@@ -37,18 +35,28 @@ class Picamera2Stream:
 
         try:
             from picamera2 import Picamera2
+            from libcamera import Transform
 
             width = int(self.width)
             height = int(self.height)
-            fps = int(self.fps)
+            self.fps = float(self.fps)
+            frame_duration_us = int(1_000_000 / self.fps)
+
+            # 180 degrees is done by the ISP at no CPU cost; 90/270 are not supported there.
+            if self.rotate == 180:
+                transform = Transform(hflip=1, vflip=1)
+                self.rotate = 0
+            else:
+                transform = Transform()
 
             self.picam2 = Picamera2(camera_num=self.camera_index)
+            # Picamera2 "RGB888" is stored B,G,R - already OpenCV's native order.
             configuration = self.picam2.create_video_configuration(
-                main={"size": (width, height), "format": "RGB888"}
+                main={"size": (width, height), "format": "RGB888"},
+                transform=transform,
+                controls={"FrameDurationLimits": (frame_duration_us, frame_duration_us)},
             )
             self.picam2.configure(configuration)
-
-            self.fps = float(fps)
 
             self.picam2.start()
             self.running = True
@@ -60,22 +68,20 @@ class Picamera2Stream:
             raise RuntimeError(f"Unable to open picamera source {self.camera_index}: {exc}") from exc
 
     def _apply_rotation(self, frame):
-        if frame is None or self.rotate == 0:
-            return frame
         if self.rotate == 90:
             return cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
         if self.rotate in (270, -90):
             return cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
-        if self.rotate == 180:
-            return cv2.rotate(frame, cv2.ROTATE_180)
         return frame
 
     def _update(self):
-        frame_interval = 1.0 / self.fps
         while self.running:
-            started = time.perf_counter()
+            # Picamera2 recycles unrequested buffers itself, so idling needs no draining.
+            if not self._has_clients.wait(timeout=0.5):
+                continue
+
+            # Blocks until the sensor delivers the next frame at the configured rate.
             frame = self.picam2.capture_array()
-            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             frame = self._apply_rotation(frame)
 
             success, encoded = cv2.imencode(
@@ -85,32 +91,17 @@ class Picamera2Stream:
             )
             if success:
                 jpg_bytes = encoded.tobytes()
-                if is_valid_jpeg_bytes(jpg_bytes):
-                    with self.lock:
-                        self.frame = frame.copy() if self.copy_frame else frame
-                        self.cached_jpeg = jpg_bytes
-                        self.timestamp = time.time()
-
-            elapsed = time.perf_counter() - started
-            if elapsed < frame_interval:
-                time.sleep(frame_interval - elapsed)
-
-    def get_frame(self):
-        with self.lock:
-            if self.frame is None:
-                return None
-            return self.frame.copy() if self.copy_frame else self.frame
+                with self.lock:
+                    self.cached_jpeg = jpg_bytes
+                    self.timestamp = time.time()
 
     def get_jpeg(self):
         with self.lock:
             return self.cached_jpeg
 
-    def get_frame_with_timestamp(self):
+    def get_jpeg_with_timestamp(self):
         with self.lock:
-            if self.frame is None:
-                return None, None
-            frame = self.frame.copy() if self.copy_frame else self.frame
-            return frame, self.timestamp
+            return self.cached_jpeg, self.timestamp
 
     def stop(self):
         self.running = False

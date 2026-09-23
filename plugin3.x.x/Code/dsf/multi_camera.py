@@ -6,7 +6,6 @@ Optimized for Linux webcam streaming.
 """
 
 import cv2
-import numpy as np
 import time
 import threading
 import os
@@ -16,22 +15,36 @@ from typing import Dict, Optional
 import logger_module
 
 
-def is_valid_jpeg_bytes(data: Optional[bytes]) -> bool:
-	"""Reject truncated or corrupt JPEG payloads before serving them."""
-	if not data or len(data) < 4:
-		return False
-
-	if data[:2] != b"\xff\xd8" or data[-2:] != b"\xff\xd9":
-		return False
-
-	try:
-		decoded = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
-		return decoded is not None and decoded.size > 0
-	except Exception:
-		return False
+NETWORK_TIMEOUT_MSEC = 10000
+# Accept a frame slightly early so source jitter doesn't halve the output rate.
+FRAME_DUE_TOLERANCE = 0.25
 
 
-class CameraStream:
+def _is_jpeg(data) -> bool:
+	return data is not None and data.size > 4 and data.flat[0] == 0xFF and data.flat[1] == 0xD8
+
+
+class ClientTracking:
+	"""Counts active consumers so capture threads only encode when someone is watching."""
+
+	def _init_clients(self):
+		self._clients = 0
+		self._clients_lock = threading.Lock()
+		self._has_clients = threading.Event()
+
+	def add_client(self):
+		with self._clients_lock:
+			self._clients += 1
+			self._has_clients.set()
+
+	def remove_client(self):
+		with self._clients_lock:
+			self._clients = max(0, self._clients - 1)
+			if self._clients == 0:
+				self._has_clients.clear()
+
+
+class CameraStream(ClientTracking):
 	"""
 	Single background camera stream.
 	"""
@@ -51,7 +64,6 @@ class CameraStream:
 		width: Optional[int],
 		height: Optional[int],
 		api_preference,
-		copy_frame: bool,
 		rotate: int,
 		jpegresolution: int,
 		format: Optional[str] = None,
@@ -68,8 +80,6 @@ class CameraStream:
 
 		self.api_preference = api_preference
 
-		self.copy_frame = copy_frame
-
 		self.rotate = rotate
 		self.jpegresolution = jpegresolution
 		self.format = format
@@ -81,9 +91,33 @@ class CameraStream:
 
 		self.lock = threading.Lock()
 
-		self.frame = None
 		self.timestamp = 0.0
 		self.cached_jpeg: Optional[bytes] = None
+
+		# True when the source already delivers JPEG and it can be served unchanged.
+		self.passthrough = False
+
+		self._init_clients()
+
+	def _open_capture(self, backend, ffmpeg_opts, params):
+		"""Open a VideoCapture with per-camera ffmpeg options (see comment in start)."""
+
+		with CameraStream._ffmpeg_env_lock:
+
+			old_ffmpeg_opts = os.environ.get("OPENCV_FFMPEG_CAPTURE_OPTIONS")
+
+			if ffmpeg_opts is not None:
+				os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = ffmpeg_opts
+			else:
+				os.environ.pop("OPENCV_FFMPEG_CAPTURE_OPTIONS", None)
+
+			try:
+				return cv2.VideoCapture(self.source, backend, params)
+			finally:
+				if old_ffmpeg_opts is not None:
+					os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = old_ffmpeg_opts
+				else:
+					os.environ.pop("OPENCV_FFMPEG_CAPTURE_OPTIONS", None)
 
 	def start(self):
 		"""
@@ -147,26 +181,16 @@ class CameraStream:
 		else:
 			ffmpeg_opts = None
 
-		with CameraStream._ffmpeg_env_lock:
+		# Timeouts only take effect when passed at open time.
+		if is_network_source:
+			params = [
+				cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, NETWORK_TIMEOUT_MSEC,
+				cv2.CAP_PROP_READ_TIMEOUT_MSEC, NETWORK_TIMEOUT_MSEC,
+			]
+		else:
+			params = []
 
-			old_ffmpeg_opts = os.environ.get("OPENCV_FFMPEG_CAPTURE_OPTIONS")
-
-			if ffmpeg_opts is not None:
-				os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = ffmpeg_opts
-			else:
-				os.environ.pop("OPENCV_FFMPEG_CAPTURE_OPTIONS", None)
-
-			try:
-				self.capture = cv2.VideoCapture(self.source, backend)
-			finally:
-				if old_ffmpeg_opts is not None:
-					os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = old_ffmpeg_opts
-				else:
-					os.environ.pop("OPENCV_FFMPEG_CAPTURE_OPTIONS", None)
-
-		# Allow some settling time
-		self.capture.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000)
-		self.capture.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 10000)
+		self.capture = self._open_capture(backend, ffmpeg_opts, params)
 
 		if not self.capture.isOpened():
 
@@ -230,9 +254,38 @@ class CameraStream:
 		#         )
 
 		#
+		# JPEG passthrough: serve the source's own JPEG without decoding
+		# or re-encoding. Only possible without rotation, which needs pixels.
+		# USB: CONVERT_RGB=0 returns the raw MJPG buffer.
+		# HTTP: CAP_PROP_FORMAT=-1 returns raw demuxed packets (JPEG for MJPEG streams).
+		#
+		try_passthrough = self.rotate == 0 and (is_http_source or not is_network_source)
+
+		if try_passthrough:
+			if is_http_source:
+				self.capture.set(cv2.CAP_PROP_FORMAT, -1)
+			else:
+				self.capture.set(cv2.CAP_PROP_CONVERT_RGB, 0)
+
+		#
 		# Test frame capture
 		#
 		ok, frame = self.capture.read()
+
+		if try_passthrough and ok:
+			self.passthrough = _is_jpeg(frame)
+
+			if not self.passthrough:
+				logger_module.logger.debug(
+					f"{self.source} does not deliver JPEG; using decode/encode"
+				)
+				if is_http_source:
+					# Raw mode can't be switched off on an open capture.
+					self.capture.release()
+					self.capture = self._open_capture(backend, ffmpeg_opts, params)
+				else:
+					self.capture.set(cv2.CAP_PROP_CONVERT_RGB, 1)
+				ok, frame = self.capture.read()
 
 		if not ok or frame is None:
 
@@ -250,6 +303,7 @@ class CameraStream:
 			backend_name = "unknown"
 		logger_module.logger.debug(
 			f"Camera opened successfully using backend {backend_name}"
+			f"{' (JPEG passthrough)' if self.passthrough else ''}"
 		)
 
 		self.running = True
@@ -290,68 +344,55 @@ class CameraStream:
 		Background frame capture loop.
 		"""
 
+		next_due = 0.0
+
 		while self.running:
-			# Capture continuously; the device controls the frame rate.
+			# Always grab so device/network buffers are drained and frames stay current.
+			# grab() only dequeues; decoding happens in retrieve().
 
 			if self.capture is None:
 				raise RuntimeError(
 					"Camera capture is not initialized"
 				)
 
-			grabbed, frame = self.capture.read()
-
-			if not grabbed:
+			if not self.capture.grab():
+				# Failed/disconnected sources return immediately; avoid spinning.
+				time.sleep(0.1)
 				continue
 
-			frame = self._apply_rotation(frame)
+			if not self._has_clients.is_set():
+				continue
 
-			with self.lock:
-				self.frame = frame
-				self.timestamp = time.time()
-				local_frame = self.frame.copy() if self.copy_frame else self.frame
+			now = time.monotonic()
+			if now < next_due - FRAME_DUE_TOLERANCE * self.frame_interval:
+				continue
+			next_due = max(next_due + self.frame_interval, now)
 
-			# Encode JPEG in background thread to cache latest JPEG bytes
+			ok, frame = self.capture.retrieve()
+
+			if not ok or frame is None:
+				continue
+
 			try:
-				success, encoded = cv2.imencode(
-					".jpg",
-					local_frame,
-					[int(cv2.IMWRITE_JPEG_QUALITY), int(self.jpegresolution)],
-				)
-
-				if success:
-					jpg_bytes = encoded.tobytes()
-					if not is_valid_jpeg_bytes(jpg_bytes):
-						logger_module.logger.warning(
-							f"Rejected corrupt JPEG for camera {self.source}"
-						)
+				if self.passthrough:
+					jpg_bytes = frame.tobytes()
+				else:
+					frame = self._apply_rotation(frame)
+					success, encoded = cv2.imencode(
+						".jpg",
+						frame,
+						[int(cv2.IMWRITE_JPEG_QUALITY), int(self.jpegresolution)],
+					)
+					if not success:
 						continue
-					with self.lock:
-						self.cached_jpeg = jpg_bytes
+					jpg_bytes = encoded.tobytes()
+
+				with self.lock:
+					self.cached_jpeg = jpg_bytes
+					self.timestamp = time.time()
 			except Exception:
 				# Encoding failures should not stop the capture loop
 				pass
-
-
-	def get_frame(self):
-		"""
-		Return latest frame.
-		"""
-
-		with self.lock:
-
-			if self.frame is None:
-				return None
-
-			frame = self.frame.copy() if self.copy_frame else self.frame
-
-			# Apply image adjustments
-			# if self.contrast != 1.0:
-			#     frame = cv2.convertScaleAbs(frame, alpha=self.contrast, beta=0)
-			#
-			# if self.brightness != 1.0:
-			#     frame = cv2.convertScaleAbs(frame, alpha=1.0, beta=(self.brightness - 1.0) * 50)
-
-			return frame
 
 	def get_jpeg(self):
 		"""
@@ -361,20 +402,13 @@ class CameraStream:
 		with self.lock:
 			return self.cached_jpeg
 
-	def get_frame_with_timestamp(self):
+	def get_jpeg_with_timestamp(self):
 		"""
-		Return frame + timestamp.
+		Return cached JPEG bytes and the time they were captured.
 		"""
 
 		with self.lock:
-
-			if self.frame is None:
-				return None, None
-
-			if self.copy_frame:
-				return self.frame.copy(), self.timestamp
-
-			return self.frame, self.timestamp
+			return self.cached_jpeg, self.timestamp
 
 	def stop(self):
 		"""
@@ -412,7 +446,6 @@ class MultiCameraManager:
 		width: Optional[int],
 		height: Optional[int],
 		api_preference,
-		copy_frame: bool,
 		rotate: int,
 		jpegresolution: int,
 		cameratype: Optional[str],
@@ -432,7 +465,6 @@ class MultiCameraManager:
 				fps=fps,
 				width=width,
 				height=height,
-				copy_frame=copy_frame,
 				rotate=rotate,
 				jpegresolution=jpegresolution,
 			)
@@ -444,7 +476,6 @@ class MultiCameraManager:
 				width=width,
 				height=height,
 				api_preference=api_preference,
-				copy_frame=copy_frame,
 				rotate=rotate,
 				jpegresolution=jpegresolution,
 				format=format,
@@ -475,19 +506,6 @@ class MultiCameraManager:
 				f"Camera '{name}' could not start: {exc}"
 			)
 
-	def get_frame(self, name: str):
-		"""
-		Retrieve latest frame.
-		"""
-
-		if name not in self.cameras:
-
-			raise KeyError(
-				f"Unknown camera '{name}'"
-			)
-
-		return self.cameras[name].get_frame()
-
 	def get_jpeg(self, name: str):
 		"""
 		Retrieve latest cached JPEG bytes for a camera.
@@ -501,9 +519,9 @@ class MultiCameraManager:
 
 		return self.cameras[name].get_jpeg()
 
-	def get_frame_with_timestamp(self, name: str):
+	def get_jpeg_with_timestamp(self, name: str):
 		"""
-		Retrieve frame + timestamp.
+		Retrieve latest cached JPEG bytes + capture timestamp.
 		"""
 
 		if name not in self.cameras:
@@ -512,7 +530,13 @@ class MultiCameraManager:
 				f"Unknown camera '{name}'"
 			)
 
-		return self.cameras[name].get_frame_with_timestamp()
+		return self.cameras[name].get_jpeg_with_timestamp()
+
+	def add_client(self, name: str):
+		self.cameras[name].add_client()
+
+	def remove_client(self, name: str):
+		self.cameras[name].remove_client()
 
 	def stop_camera(self, name: str):
 		"""

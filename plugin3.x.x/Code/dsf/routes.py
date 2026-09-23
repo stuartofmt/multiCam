@@ -1,5 +1,4 @@
 import asyncio
-import cv2
 import time
 from typing import Optional
 
@@ -16,7 +15,7 @@ from defaults import (
     DEFAULT_JPEG_QUALITY,
     DefaultCameraSettings,
 )
-from multi_camera import MultiCameraManager, is_valid_jpeg_bytes
+from multi_camera import MultiCameraManager
 import logger_module
 
 
@@ -33,7 +32,6 @@ class CameraConfig(BaseModel):
     width: Optional[int] = None
     height: Optional[int] = None
     api_preference: Optional[int] = None
-    copy_frame: bool = False
     rotate: int = 0
     jpegresolution: int = 95
     format: Optional[str] = None
@@ -64,6 +62,7 @@ class CameraConfig(BaseModel):
 # ============================================================
 
 JPEG_QUALITY = DEFAULT_JPEG_QUALITY
+SNAPSHOT_TIMEOUT_SEC = 3.0
 
 # ============================================================
 # FastAPI App
@@ -133,7 +132,6 @@ async def api_add_camera(config: CameraConfig):
             width=config.width,
             height=config.height,
             api_preference=config.api_preference,
-            copy_frame=config.copy_frame,
             rotate=config.rotate,
             jpegresolution=config.jpegresolution,
             cameratype=config.cameratype,
@@ -172,51 +170,46 @@ async def mjpeg_generator(request: Request, camera_name: str):
     frame_count = 0
     last_timestamp = None
 
-    while True:
-        if await request.is_disconnected():
-            logger_module.logger.debug(f"Client disconnected: {camera_name}")
-            break
+    # Capture threads only encode while at least one client is registered.
+    manager.add_client(camera_name)
+    try:
+        while True:
+            if await request.is_disconnected():
+                logger_module.logger.debug(f"Client disconnected: {camera_name}")
+                break
 
-        try:
-            start = time.perf_counter()
+            try:
+                start = time.perf_counter()
 
-            # Use pre-cached JPEG from camera thread (already encoded)
-            jpg_bytes = manager.get_jpeg(camera_name)
+                jpg_bytes, timestamp = manager.get_jpeg_with_timestamp(camera_name)
 
-            if jpg_bytes is None or not is_valid_jpeg_bytes(jpg_bytes):
-                await asyncio.sleep(0.01)
-                continue
+                if jpg_bytes is None or timestamp == last_timestamp:
+                    await asyncio.sleep(0.01)
+                    continue
+                last_timestamp = timestamp
 
-            # Defensive copy to avoid race with camera thread rewriting cache
-            jpg_bytes = bytes(jpg_bytes)
+                yield (
+                    b"--frame\r\n"
+                    b"Content-Type: image/jpeg\r\n"
+                    b"Content-Length: " + str(len(jpg_bytes)).encode() + b"\r\n\r\n" +
+                    jpg_bytes +
+                    b"\r\n"
+                )
 
-            # Skip duplicate frames to maintain FPS
-            frame, timestamp = manager.get_frame_with_timestamp(camera_name)
-            if timestamp is not None and timestamp == last_timestamp:
-                await asyncio.sleep(0.01)
-                continue
-            last_timestamp = timestamp
+                frame_count += 1
+                if frame_count % 100 == 0:
+                    logger_module.logger.debug(f"[{camera_name}] Streamed {frame_count} frames")
 
-            yield (
-                b"--frame\r\n"
-                b"Content-Type: image/jpeg\r\n"
-                b"Content-Length: " + str(len(jpg_bytes)).encode() + b"\r\n\r\n" +
-                jpg_bytes +
-                b"\r\n"
-            )
+                elapsed = time.perf_counter() - start
+                sleep_time = stream_interval - elapsed
 
-            frame_count += 1
-            if frame_count % 100 == 0:
-                logger_module.logger.debug(f"[{camera_name}] Streamed {frame_count} frames")
-
-            elapsed = time.perf_counter() - start
-            sleep_time = stream_interval - elapsed
-
-            if sleep_time > 0:
-                await asyncio.sleep(sleep_time)
-        except Exception as e:
-            logger_module.logger.error(f"Error in mjpeg_generator for {camera_name}: {e}")
-            break
+                if sleep_time > 0:
+                    await asyncio.sleep(sleep_time)
+            except Exception as e:
+                logger_module.logger.error(f"Error in mjpeg_generator for {camera_name}: {e}")
+                break
+    finally:
+        manager.remove_client(camera_name)
 
 
 @app.get("/streaming/{camera_name}")
@@ -239,8 +232,22 @@ async def camera_snapshot(camera_name: str):
     if camera_name not in manager.cameras:
         return {"error": f"Unknown camera '{camera_name}'"}
 
-    jpg_bytes = manager.get_jpeg(camera_name)
-    if jpg_bytes is None or not is_valid_jpeg_bytes(jpg_bytes):
+    # The cached JPEG may be stale if nobody is streaming, so request a fresh one.
+    requested_at = time.time()
+    deadline = time.monotonic() + SNAPSHOT_TIMEOUT_SEC
+    manager.add_client(camera_name)
+    try:
+        while True:
+            jpg_bytes, timestamp = manager.get_jpeg_with_timestamp(camera_name)
+            if jpg_bytes is not None and timestamp >= requested_at:
+                break
+            if time.monotonic() > deadline:
+                break
+            await asyncio.sleep(0.02)
+    finally:
+        manager.remove_client(camera_name)
+
+    if jpg_bytes is None:
         return {"error": f"Camera '{camera_name}' has no valid captured frame"}
 
     return Response(content=jpg_bytes, media_type="image/jpeg")

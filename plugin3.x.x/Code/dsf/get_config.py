@@ -685,6 +685,78 @@ def set_controls_picam(controls_by_source, camera_config_options=None):
 	return results_by_source
 
 
+def _get_picam_sensor_modes(source) -> "dict[Tuple[int, int], float]":
+	"""Return {(width, height): max_fps} for each sensor mode of a Pi camera."""
+
+	picam2 = Picamera2(camera_num=source)
+	try:
+		modes = {}
+		for mode in picam2.sensor_modes:
+			wh = tuple(mode["size"])
+			modes[wh] = max(modes.get(wh, 0.0), float(mode["fps"]))
+		return modes
+	finally:
+		picam2.close()
+
+
+def validate_pi_camera_configs(cameras: Dict[str, dict]) -> Dict[str, dict]:
+	"""
+	Pi camera equivalent of validate_usb_camera_configs.
+
+	Adjusts 'width'/'height' to a supported sensor mode and caps 'fps'
+	at that mode's maximum. Format is not validated because the Pi
+	stream always captures RGB888.
+
+	Returns a NEW dict (the input is not mutated). Entries whose sensor
+	modes can't be queried are returned unchanged.
+	"""
+
+	adjusted = copy.deepcopy(cameras)
+	for cam_name, cam in adjusted.items():
+		if cam.get('cameratype') != 'PICAMERA':
+			continue
+
+		source = cam.get("source")
+		try:
+			modes = _get_picam_sensor_modes(source)
+		except Exception as e:
+			logger.warning(f"[{cam_name}] Could not query sensor modes for camera {source}: {e}")
+			continue
+
+		if not modes:
+			logger.warning(f"[{cam_name}] No sensor modes reported for camera {source}; skipping")
+			continue
+
+		requested_wh = (int(cam["width"]), int(cam["height"]))
+		requested_fps = float(cam["fps"])
+
+		if requested_wh in modes:
+			chosen_wh = requested_wh
+		else:
+			chosen_wh = _next_lower_resolution(requested_wh, list(modes.keys()))
+			logger.info(
+				f"[{cam_name}] Resolution {requested_wh[0]}x{requested_wh[1]} not "
+				f"supported on camera {source}; Adjusting to "
+				f"{chosen_wh[0]}x{chosen_wh[1]}"
+			)
+
+		cam["width"], cam["height"] = chosen_wh
+
+		# Pi sensors accept any frame rate up to the mode's maximum.
+		max_fps = modes[chosen_wh]
+		if requested_fps > max_fps:
+			logger.info(
+				f"[{cam_name}] fps {requested_fps} not supported at "
+				f"{chosen_wh[0]}x{chosen_wh[1]} on camera {source}; "
+				f"falling back to {max_fps}"
+			)
+			cam["fps"] = max_fps
+		else:
+			cam["fps"] = requested_fps
+
+	return adjusted
+
+
 
 def get_config_from_file(config, name, source, cameratype):
 	"""
@@ -1028,15 +1100,18 @@ def configure_cameras(installed_cameras,camera_list,requested_options):
 					logger.debug(f'Camera {camera} with source {details['source']} removed')
 					continue
 
-				print(f'\n ========= {camera_list=} \n =======')
-
 				# Validate this camera's format, resolution, and fps.
-				validated_camera = validate_usb_camera_configs({camera: details})
-				camera_list[camera] = validated_camera[camera]
+				if details['cameratype'] == 'USB':
+					validated_camera = validate_usb_camera_configs({camera: details})
+					camera_list[camera] = validated_camera[camera]
+				elif details['cameratype'] == 'PICAMERA':
+					validated_camera = validate_pi_camera_configs({camera: details})
+					camera_list[camera] = validated_camera[camera]
+
 
 
 			camera_results = []
-			print(camera_list)
+
 			camera_results.append("Configured Camera Settings")
 			for name, options in camera_list.items():
 				for option, value in options.items():
