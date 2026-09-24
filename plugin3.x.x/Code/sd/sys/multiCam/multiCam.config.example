@@ -64,8 +64,9 @@ Cam1Loopback = http://192.168.30.41:8044/Cam1/stream
 # fps,width,height,rotation, brightness,contrast,focus,balance
 # Consult your camera specifications for the expected values
 
-# For [STREAMS] the only options allowed are rotation and jpegresolution
+# For [STREAMS] the only options allowed are fps, rotate and jpegresolution
 # This is because [STREAMS] are effectively a pass-through
+# fps is the maximum rate served (default 15); it cannot exceed the source rate
 
 # Any options must be provided with numeric values
 

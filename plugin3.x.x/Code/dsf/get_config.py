@@ -818,6 +818,11 @@ def get_config_from_file(config, name, source, cameratype):
 		**mpeg_default
 	}
 
+	# fps sets the frame interval (1/fps), so it must be positive.
+	if camera_settings['fps'] <= 0:
+		logger.warning(f"[{name}] fps {camera_settings['fps']} must be greater than 0; using default {default_camera_settings['fps']}")
+		camera_settings['fps'] = default_camera_settings['fps']
+
 	camera_data = {
 		key.lower(): value
 		for key, value in {

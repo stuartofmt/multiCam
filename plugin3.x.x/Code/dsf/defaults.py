@@ -34,6 +34,7 @@ class DefaultCameraSettings(Enum):
     rotate = 0
 
 class DefaultNetworkCameraSettings(Enum):
+    fps = 15
     jpegresolution = 95
     rotate = 0
 

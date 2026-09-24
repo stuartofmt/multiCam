@@ -193,7 +193,7 @@ async def mjpeg_generator(request: Request, camera_name: str):
                 )
 
                 frame_count += 1
-                if frame_count % 100 == 0:
+                if frame_count % 10000 == 0:  # periodic output
                     logger_module.logger.debug(f"[{camera_name}] Streamed {frame_count} frames")
             except Exception as e:
                 logger_module.logger.error(f"Error in mjpeg_generator for {camera_name}: {e}")
