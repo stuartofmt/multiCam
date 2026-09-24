@@ -6,7 +6,7 @@ import glob
 import copy
 from typing import Dict, List, Optional, Tuple
 
-from defaults import DefaultCameraSettings, DefaultNetworkCameraSettings, ALLOWED_OPTIONS, NETWORK_TYPES
+from defaults import DefaultCameraSettings, DefaultNetworkCameraSettings, AllowedOptions, NETWORK_TYPES
 from logger_module import logger
 
 # --- CSI cameras via picamera2 ---
@@ -43,6 +43,19 @@ CONTROL_NAME_ALIASES_USB = {
 	"exposure_auto": ["exposure_auto", "auto_exposure"],
 	"focus_auto": ["focus_auto", "auto_focus"],
 }
+
+
+# AllowedOptions values name the Python type each option's value should have.
+_OPTION_TYPES = {"float": float, "int": int}
+
+
+def _cast_option(name, value):
+	"""Convert an option value to the type given for it in AllowedOptions."""
+	option_type = _OPTION_TYPES[AllowedOptions[name].value]
+	if option_type is int:
+		# Config values may be written as "1.0"; int("1.0") would fail.
+		return int(round(float(value)))
+	return option_type(value)
 
 
 # Control names and ranges don't change while running, so query each device once.
@@ -180,7 +193,7 @@ def get_camera_options_usb(camera_name, source):
 					...
 				}
 			}
-		Only controls in ALLOWED_OPTIONS that are confirmed present and
+		Only controls in AllowedOptions that are confirmed present and
 		successfully reset on this camera are included, even though every
 		control on the camera was reset.
 	"""
@@ -194,7 +207,7 @@ def get_camera_options_usb(camera_name, source):
 		writable_controls = {}
 		reverse_lookup = {}  # real_name actually used -> canonical_name
 
-		for canonical_name in ALLOWED_OPTIONS:
+		for canonical_name in AllowedOptions.__members__:
 			real_name = _resolve_real_name(canonical_name, all_controls.keys())
 			if real_name is None:
 				logger.debug(f"[{camera_name}] {canonical_name}: not present on this camera")
@@ -252,7 +265,7 @@ def set_controls_usb(controls_by_source, camera_config_options=None):
 		controls_by_source: dict keyed on source (device path), with
 			values in the same shape produced by get_camera_options_usb.
 		camera_config_options: optional dict of config file options. Only controls
-			present in both this dict and ALLOWED_OPTIONS will be set.
+			present in both this dict and AllowedOptions will be set.
 
 	Returns:
 		A dict keyed on source, each value a dict of
@@ -269,7 +282,7 @@ def set_controls_usb(controls_by_source, camera_config_options=None):
 		for canonical_name, bounds in controls.items():
 			if camera_config_options and canonical_name not in camera_config_options:
 				continue
-			if canonical_name not in ALLOWED_OPTIONS:
+			if canonical_name not in AllowedOptions.__members__:
 				continue
 			real_name = _resolve_real_name(canonical_name, all_real_controls)
 			if real_name is None:
@@ -442,10 +455,10 @@ def _next_lower_fps(
 
 
 def _add_applied_options(cam: dict, options: Optional[dict]) -> None:
-	"""Copy any ALLOWED_OPTIONS in `options` (as applied) into the camera config."""
+	"""Copy any AllowedOptions in `options` (as applied) into the camera config."""
 	for key, value in (options or {}).items():
-		if key in ALLOWED_OPTIONS:
-			cam[key] = value
+		if key in AllowedOptions.__members__:
+			cam[key] = _cast_option(key, value)
 
 
 def validate_usb_camera_configs(cameras: Dict[str, dict], applied_options: Optional[Dict[str, dict]] = None) -> Dict[str, dict]:
@@ -462,7 +475,7 @@ def validate_usb_camera_configs(cameras: Dict[str, dict], applied_options: Optio
 	values the device actually supports, per the fallback rules
 	described in the module docstring.
 
-	Any ALLOWED_OPTIONS in applied_options[<camera name>] (the values
+	Any AllowedOptions in applied_options[<camera name>] (the values
 	actually set, after clamping) are added to that camera's entry.
 
 	Returns a NEW dict (the input is not mutated). Entries whose
@@ -599,7 +612,7 @@ _PICAM_INFO_CACHE = {}
 
 def get_camera_options_picam(camera_name, source):
 	"""
-	Return min/max/default for the ALLOWED_OPTIONS controls a Pi camera supports.
+	Return min/max/default for the AllowedOptions controls a Pi camera supports.
 
 	No reset is needed: libcamera controls only last for one camera session,
 	so every new session starts at the defaults. The camera is opened once per
@@ -663,7 +676,7 @@ def set_controls_picam(controls_by_source, camera_config_options=None):
 		resolved = {}
 
 		for canonical_name, value in (camera_config_options or {}).items():
-			if canonical_name not in ALLOWED_OPTIONS:
+			if canonical_name not in AllowedOptions.__members__:
 				continue
 			bounds = controls.get(canonical_name)
 			if bounds is None:
@@ -696,7 +709,7 @@ def validate_pi_camera_configs(cameras: Dict[str, dict], applied_options: Option
 	at that mode's maximum. Format is not validated because the Pi
 	stream always captures RGB888.
 
-	Any ALLOWED_OPTIONS in applied_options[<camera name>] (the values
+	Any AllowedOptions in applied_options[<camera name>] (the values
 	actually set, after clamping) are added to that camera's entry.
 
 	Returns a NEW dict (the input is not mutated). Entries whose sensor
@@ -760,11 +773,10 @@ def get_config_from_file(config, name, source, cameratype):
 	file_settings = {}
 
 	if config.has_section(name):
-		valid_options = ALLOWED_OPTIONS
 		file_options.update({
-			key.lower(): float(value)
+			key.lower(): _cast_option(key.lower(), value)
 			for key, value in config[name].items()
-			if key.lower() in valid_options
+			if key.lower() in AllowedOptions.__members__
 		})
 
 		valid_settings = [setting.name for setting in DefaultCameraSettings]

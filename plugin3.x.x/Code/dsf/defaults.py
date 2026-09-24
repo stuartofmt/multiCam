@@ -15,7 +15,16 @@ STATIC_DIR = BASE_DIR / "static"
 # Allowed Camera Defaults
 # ============================================================
 
-ALLOWED_OPTIONS = ["brightness","contrast","balance","saturation","autofocus","sharpness","autoexposure"]
+class AllowedOptions(Enum):
+    brightness = 'float'
+    contrast  = 'float'
+    balance = 'float'
+    saturation = 'float'
+    sharpness = 'float'
+    autoexposure = 'int'
+    autofocus = 'int'
+    
+
 
 class DefaultCameraSettings(Enum):
     fps = 15
