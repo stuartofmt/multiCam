@@ -77,7 +77,7 @@ if __name__ == "__main__":
 
 	global progName, progVersion
 	progName = os.path.splitext(os.path.basename(sys.argv[0]))[0]
-	progVersion = '0.0.1'
+	progVersion = '0.0.9'
 
 	CONFIGFILENAME = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent / "config.ini"
 	LOGFILENAME = CONFIGFILENAME.parent / "multiCam.log"
@@ -154,6 +154,7 @@ if __name__ == "__main__":
 	logger.info('-------------------------------------------------------\n')
 	logger.info(f"View cameras at http://{this_ip_address}:{PORT}\n")
 	for camera_name, camera_settings in configured_cameras.items():
+		camera_name = camera_name.replace(' ', '%20')
 		logger.info(f"{camera_name} streaming url is http://{this_ip_address}:{PORT}/{camera_name}/{camera_settings['streamname']}")
 		logger.info(f"{camera_name} snapshot url is http://{this_ip_address}:{PORT}/{camera_name}/{camera_settings['snapshotname']}\n")
 
