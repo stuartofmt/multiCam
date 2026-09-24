@@ -47,6 +47,13 @@ h1 {
     overflow-wrap: anywhere;
 }
 
+.camera-card a,
+.camera-card a:visited {
+    color: #fff;
+
+    overflow-wrap: anywhere;
+}
+
 .camera-card img {
     width: 100%;
 

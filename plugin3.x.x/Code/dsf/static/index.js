@@ -20,13 +20,15 @@ async function loadCameras() {
         return;
     }
 
-    for (const cameraName of data.cameras) {
+    for (const camera of data.cameras) {
+
+        const cameraName = camera.name;
 
         const card = document.createElement("div");
         card.className = "camera-card";
 
-        const streamUrl = new URL(`/${cameraName}/stream`, window.location.href);
-        const snapshotUrl = new URL(`/${cameraName}/snapshot`, window.location.href);
+        const streamUrl = new URL(`/${cameraName}/${camera.stream}`, window.location.href);
+        const snapshotUrl = new URL(`/${cameraName}/${camera.snapshot}`, window.location.href);
         const title = document.createElement("h2");
         title.innerText = cameraName;
 
@@ -45,7 +47,8 @@ async function loadCameras() {
         console.warn(`Camera: ${cameraName}, Stream URL: ${streamUrl.href}, Snapshot URL: ${snapshotUrl.href}`);
         const img = document.createElement("img");
 
-        img.src = `/${cameraName}/stream`;
+        img.src = streamUrl.href;
+        img.dataset.stream = streamUrl.href;
         img.alt = cameraName;
 
         card.appendChild(title);
@@ -57,5 +60,15 @@ async function loadCameras() {
         grid.appendChild(card);
     }
 }
+
+// Browsers allow only ~6 connections per host, and each <img> stream holds one open.
+// Release them while this tab is hidden so stream / snapshot links opened in other tabs can connect.
+const BLANK_IMAGE = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+
+document.addEventListener("visibilitychange", () => {
+    for (const img of document.querySelectorAll("img[data-stream]")) {
+        img.src = document.hidden ? BLANK_IMAGE : img.dataset.stream;
+    }
+});
 
 loadCameras();

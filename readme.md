@@ -1,29 +1,47 @@
 # multiCam
 
 multiCam is a Duet Web Control SBC plugin for viewing and streaming multiple
-cameras. It supports USB/V4L2 cameras, Raspberry Pi
-cameras through Picamera2, and network cameras that provide an HTTP, HTTPS, or
-RTSP stream.
+cameras. It supports USB/V4L2 cameras, Raspberry Pi cameras through Picamera2,
+and network cameras that provide an HTTP, HTTPS or RTSP stream.
 
 ## Configuration
 
 The plugin reads its settings from:
 
-`/opt/dsf/sd/sys/multiCam/multiCam.config`
+`sys/multiCam/multiCam.config`
 
 Use `multiCam.config.example` as a starting point.
 
+Set the port in `[UI]`. It is required:
+
+```ini
+[UI]
+port=8044
+```
+
+## Logging
+
+Set the logging level in `[LOGGING]`:
+
+```ini
+[LOGGING]
+loglevel=DEBUG
+```
+
+Supported levels are `WARNING`, `INFO` and `DEBUG`. The default is `INFO`. The
+log is written to `sys/multiCam/multiCam.log`.
+
+## Cameras
+
 Cameras are listed in three sections: `[USBCAMERAS]`, `[PICAMERAS]` and
-`[STREAMS]`. Include all three sections, even if some are empty. At least one
-camera must be configured.
+`[STREAMS]`. At least one camera in one of these sections must be configured.
 
 Each entry has the form `name=source`. Do not put quotes around values. Camera
 names are used in the web URLs and must be unique across all three sections.
 
 To change a camera's settings, add a section with the same name as the camera.
-Settings you leave out use the defaults. All values must be numeric. Unknown
-keys are ignored. An `fps` of 0 or less is replaced by the default (15), and a
-warning is logged.
+Settings you leave out use the defaults. All values must be numeric, except
+`streamname` and `snapshotname`. Unknown keys are ignored.
 
 When the plugin starts, it logs:
 
@@ -32,11 +50,9 @@ When the plugin starts, it logs:
 - the settings requested in the configuration file;
 - the settings actually applied, after any adjustment.
 
-Set `LEVEL=INFO` or `LEVEL=DEBUG` to see these messages.
-
 ## USB
 
-USB cameras are listed under `[USBCAMERAS]`. The source must be a V4L2 device
+USB cameras are listed under `[USBCAMERAS]`. The source must be a device
 of the form `/dev/videoN`:
 
 ```ini
@@ -47,31 +63,6 @@ Rear=/dev/video2
 
 Many USB cameras create more than one `/dev/video` node. Only nodes that
 support video capture are listed in the startup log; use one of those.
-
-### USB settings
-
-| Setting          | Default | Description                                                     |
-|------------------|---------|-----------------------------------------------------------------|
-| `width`          | 1024    | Frame width in pixels.                                          |
-| `height`         | 768     | Frame height in pixels.                                         |
-| `fps`            | 15      | Frame rate.                                                     |
-| `rotate`         | 0       | Clockwise rotation, rounded to the nearest 0, 90, 180 or 270.   |
-| `jpegresolution` | 95      | JPEG quality (1-100) used when frames are re-encoded.           |
-
-The plugin checks these values against the formats the camera reports
-(`v4l2-ctl --list-formats-ext`) and adjusts them where necessary:
-
-- **Format:** MJPG is requested. If the camera does not offer MJPG, YUYV is
-  used, or failing that the first format the camera reports.
-- **Resolution:** if `width`×`height` is not supported, the next smaller
-  resolution is used. If there is no smaller one, the largest is used.
-- **Frame rate:** if `fps` is not supported at that resolution, the next lower
-  rate is used. If there is no lower rate, the highest is used.
-
-If the camera delivers MJPG and `rotate` is 0, frames are sent to the browser
-unchanged. This uses very little CPU, and `jpegresolution` has no effect.
-Setting any rotation means every frame is decoded, rotated and re-encoded at
-`jpegresolution`.
 
 ### USB options
 
@@ -100,6 +91,33 @@ installed.
 - `autoexposure` uses the driver's menu values. On many UVC cameras, 1 is
   manual and 3 is automatic (aperture priority).
 
+### USB settings
+
+| Setting          | Default  | Description                                                      |
+|------------------|----------|------------------------------------------------------------------|
+| `width`          | 1024     | Frame width in pixels.                                           |
+| `height`         | 768      | Frame height in pixels.                                          |
+| `fps`            | 15       | Frame rate.                                                      |
+| `rotate`         | 0        | Clockwise rotation, rounded to the nearest 0, 90, 180 or 270.    |
+| `jpegresolution` | 95       | JPEG quality (1-100) used when frames are re-encoded.            |
+| `streamname`     | stream   | Name of the stream URL. See [User Interface](#user-interface).   |
+| `snapshotname`   | snapshot | Name of the snapshot URL. See [User Interface](#user-interface). |
+
+The plugin checks these values against the formats the camera reports
+(`v4l2-ctl --list-formats-ext`) and adjusts them where necessary:
+
+- **Format:** MJPG is requested. If the camera does not offer MJPG, YUYV is
+  used, or failing that the first format the camera reports.
+- **Resolution:** if `width`×`height` is not supported, the next smaller
+  resolution is used. If there is no smaller one, the largest is used.
+- **Frame rate:** if `fps` is not supported at that resolution, the next lower
+  rate is used. If there is no lower rate, the highest is used.
+
+If the camera delivers MJPG and `rotate` is 0, frames are sent to the browser
+unchanged. This uses very little CPU, and `jpegresolution` has no effect.
+Setting any rotation means every frame is decoded, rotated and re-encoded at
+`jpegresolution`.
+
 ### USB example
 
 ```ini
@@ -126,28 +144,6 @@ The index counts only Pi cameras; USB cameras are not included in the count.
 For example, `Picamera=0` selects the first Pi camera even if the system
 reports a USB camera first.
 
-### PICAMERA settings
-
-| Setting          | Default | Description                                                     |
-|------------------|---------|-----------------------------------------------------------------|
-| `width`          | 1024    | Frame width in pixels.                                          |
-| `height`         | 768     | Frame height in pixels.                                         |
-| `fps`            | 15      | Frame rate.                                                     |
-| `rotate`         | 0       | Clockwise rotation, rounded to the nearest 0, 90, 180 or 270.   |
-| `jpegresolution` | 95      | JPEG quality (1-100).                                           |
-
-The plugin checks these values against the camera's sensor modes and adjusts
-them where necessary:
-
-- **Resolution:** if `width`×`height` is not a sensor mode, the next smaller
-  mode is used. If there is no smaller mode, the largest is used.
-- **Frame rate:** any rate up to the mode's maximum is accepted. Higher values
-  are reduced to that maximum.
-
-Frames are always captured as RGB and encoded to JPEG at `jpegresolution`.
-A rotation of 180 is done by the camera hardware and costs no CPU. Rotations of
-90 and 270 are done in software.
-
 ### PICAMERA options
 
 Options are passed to libcamera when the camera starts.
@@ -172,6 +168,30 @@ Options are passed to libcamera when the camera starts.
   - `balance` and `autoexposure`: 1 is on, 0 is off.
   - `autofocus`: 0 is manual, 1 is auto (single), 2 is continuous.
 - Check the startup log for the exact ranges your camera reports.
+
+### PICAMERA settings
+
+| Setting          | Default  | Description                                                      |
+|------------------|----------|------------------------------------------------------------------|
+| `width`          | 1024     | Frame width in pixels.                                           |
+| `height`         | 768      | Frame height in pixels.                                          |
+| `fps`            | 15       | Frame rate.                                                      |
+| `rotate`         | 0        | Clockwise rotation, rounded to the nearest 0, 90, 180 or 270.    |
+| `jpegresolution` | 95       | JPEG quality (1-100).                                            |
+| `streamname`     | stream   | Name of the stream URL. See [User Interface](#user-interface).   |
+| `snapshotname`   | snapshot | Name of the snapshot URL. See [User Interface](#user-interface). |
+
+The plugin checks these values against the camera's sensor modes and adjusts
+them where necessary:
+
+- **Resolution:** if `width`×`height` is not a sensor mode, the next smaller
+  mode is used. If there is no smaller mode, the largest is used.
+- **Frame rate:** any rate up to the mode's maximum is accepted. Higher values
+  are reduced to that maximum.
+
+Frames are always captured as RGB and encoded to JPEG at `jpegresolution`.
+A rotation of 180 is done by the camera hardware and costs no CPU. Rotations of
+90 and 270 are done in software.
 
 ### PICAMERA example
 
@@ -204,11 +224,13 @@ Streams use OpenCV's automatic backend selection, usually FFmpeg.
 
 ### STREAM settings
 
-| Setting          | Default | Description                                                     |
-|------------------|---------|-----------------------------------------------------------------|
-| `fps`            | 15      | Maximum frame rate served.                                      |
-| `rotate`         | 0       | Clockwise rotation, rounded to the nearest 0, 90, 180 or 270.   |
-| `jpegresolution` | 95      | JPEG quality (1-100) used when frames are re-encoded.           |
+| Setting          | Default  | Description                                                      |
+|------------------|----------|------------------------------------------------------------------|
+| `fps`            | 15       | Maximum frame rate served.                                       |
+| `rotate`         | 0        | Clockwise rotation, rounded to the nearest 0, 90, 180 or 270.    |
+| `jpegresolution` | 95       | JPEG quality (1-100) used when frames are re-encoded.            |
+| `streamname`     | stream   | Name of the stream URL. See [User Interface](#user-interface).   |
+| `snapshotname`   | snapshot | Name of the snapshot URL. See [User Interface](#user-interface). |
 
 A stream is passed through as the source delivers it. `width` and `height`
 are ignored; the source's resolution is used.
@@ -227,11 +249,6 @@ frames are sent unchanged, and `jpegresolution` has no effect. RTSP streams,
 non-MJPEG sources and rotated streams are decoded and re-encoded at
 `jpegresolution`.
 
-### STREAM options
-
-None. Camera controls (`brightness`, `contrast`, etc.) cannot be applied to
-streams. Change them on the source camera instead.
-
 ### STREAM example
 
 ```ini
@@ -241,43 +258,25 @@ rotate=90
 jpegresolution=80
 ```
 
-## Logging
+## User Interface
 
-Set the logging level in `[LOGGING]`:
-
-```ini
-[LOGGING]
-LEVEL=INFO
-```
-
-Supported levels are `WARNING`, `INFO`, and `DEBUG`. The log is written beside
-the configuration file as `multiCam.log`.
-
-## Accessing the streams
-
-The plugin starts its web interface on the port configured in `[UI]`:
-
-```ini
-[UI]
-PORT=8044
-```
-
-Open `http://<SBC-IP>:8044/` to view the configured cameras. Each camera also
+Open `http://<SBC-IP>:<port>/` to view the configured cameras. Each camera also
 has these endpoints, where `<camera-name>` is URL-encoded when necessary:
 
 ```text
-http://<SBC-IP>:8044/<camera-name>/stream
-http://<SBC-IP>:8044/<camera-name>/snapshot
+http://<SBC-IP>:<port>/<camera-name>/<streamname>
+http://<SBC-IP>:<port>/<camera-name>/<snapshotname>
 ```
 
-## Running manually
+`<streamname>` and `<snapshotname>` default to `stream` and `snapshot`, and
+can be changed in the camera's section:
 
-From the plugin's `dsf` directory, run:
-
-```bash
-python3 multiCam.py /opt/dsf/sd/sys/multiCam/multiCam.config
+```ini
+[Front]
+streamname=video
+snapshotname=still
 ```
 
-When installed through Duet Web Control, the plugin manager starts the
-executable using the configuration path declared in `Code/plugin.json`.
-
+The names may only contain letters, digits, `-`, `_` and `~`, and must be
+different from each other. An invalid name is replaced by its default, with a
+warning in the log.

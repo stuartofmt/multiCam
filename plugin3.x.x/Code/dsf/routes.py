@@ -34,6 +34,9 @@ class CameraConfig(BaseModel):
     rotate: int = 0
     jpegresolution: int = 95
     format: Optional[str] = None
+    # URL path segments: /<camera name>/<streamname> and /<camera name>/<snapshotname>
+    streamname: str = DefaultCameraSettings.streamname.value
+    snapshotname: str = DefaultCameraSettings.snapshotname.value
     # Picamera only: libcamera controls applied when the camera starts.
     controls: Optional[dict] = None
 
@@ -97,6 +100,9 @@ app.add_middleware(
 
 manager = MultiCameraManager()
 
+# camera name -> {"stream": streamname, "snapshot": snapshotname}
+camera_urls = {}
+
 
 def start_cameras():
     manager.start()
@@ -119,7 +125,12 @@ async def root():
 
 @app.get("/api/cameras")
 async def list_cameras():
-    return {"cameras": list(manager.cameras.keys())}
+    return {
+        "cameras": [
+            {"name": name, **camera_urls[name]}
+            for name in manager.cameras
+        ]
+    }
 
 
 @app.post("/api/add-camera")
@@ -138,6 +149,10 @@ async def api_add_camera(config: CameraConfig):
             format=config.format,
             controls=config.controls,
         )
+        camera_urls[config.name] = {
+            "stream": config.streamname,
+            "snapshot": config.snapshotname,
+        }
         return {"status": "success", "name": config.name}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -203,7 +218,6 @@ async def mjpeg_generator(request: Request, camera_name: str):
 
 
 @app.get("/streaming/{camera_name}")
-@app.get("/{camera_name}/stream")
 async def stream_camera(request: Request, camera_name: str):
     if camera_name not in manager.cameras:
         return {"error": f"Unknown camera '{camera_name}'"}
@@ -217,11 +231,7 @@ async def stream_camera(request: Request, camera_name: str):
     )
 
 
-@app.get("/{camera_name}/snapshot")
 async def camera_snapshot(camera_name: str):
-    if camera_name not in manager.cameras:
-        return {"error": f"Unknown camera '{camera_name}'"}
-
     # The cached JPEG may be stale if nobody is streaming, so request a fresh one.
     requested_at = time.time()
     deadline = time.monotonic() + SNAPSHOT_TIMEOUT_SEC
@@ -242,3 +252,17 @@ async def camera_snapshot(camera_name: str):
 
     return Response(content=jpg_bytes, media_type="image/jpeg")
 
+
+
+# Declared last so fixed paths such as /api/cameras and /streaming/<camera> match first.
+@app.get("/{camera_name}/{endpoint}")
+async def camera_endpoint(request: Request, camera_name: str, endpoint: str):
+    if camera_name not in manager.cameras:
+        return {"error": f"Unknown camera '{camera_name}'"}
+
+    urls = camera_urls[camera_name]
+    if endpoint == urls["stream"]:
+        return await stream_camera(request, camera_name)
+    if endpoint == urls["snapshot"]:
+        return await camera_snapshot(camera_name)
+    return {"error": f"Unknown endpoint '{endpoint}' for camera '{camera_name}'"}

@@ -20,3 +20,4 @@ callgraph.png
 call_graph_pyan.py
 x*.py
 *.copy
+*.claude

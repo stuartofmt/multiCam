@@ -32,14 +32,17 @@ class DefaultCameraSettings(Enum):
     height = 768
     jpegresolution = 95
     rotate = 0
+    streamname = 'stream'
+    snapshotname= 'snapshot'
 
 class DefaultNetworkCameraSettings(Enum):
     fps = 15
     jpegresolution = 95
     rotate = 0
+    streamname = 'stream'
+    snapshotname= 'snapshot'
 
 
-# ALLOWED_SETTINGS = ['fps','width','height','jpegresolution','rotate']
 NETWORK_TYPES = ['http://','https://','rtsp://']
 
 

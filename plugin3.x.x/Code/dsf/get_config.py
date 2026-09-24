@@ -12,7 +12,7 @@ from logger_module import logger
 # --- CSI cameras via picamera2 ---
 from picamera2 import Picamera2
 
-global UI, LOGGING, CAMERAS
+global PORT, LOGLEVEL, CAMERAS
 # From https://gist.github.com/laywill/63d75b53e8a7a801d77f0dd2b97de54d
 class DictToClass:
 	def __init__(self, dictionary):
@@ -764,6 +764,11 @@ def validate_pi_camera_configs(cameras: Dict[str, dict], applied_options: Option
 
 
 
+URL_NAME_SETTINGS = ('streamname', 'snapshotname')
+# URL-safe path segment: RFC 3986 unreserved characters, excluding '.' so "." and ".." can't be used.
+URL_NAME_RE = re.compile(r'[A-Za-z0-9_~-]+')
+
+
 def get_config_from_file(config, name, source, cameratype):
 	"""
 	Build the default settings dictionaries for a single camera.
@@ -781,7 +786,7 @@ def get_config_from_file(config, name, source, cameratype):
 
 		valid_settings = [setting.name for setting in DefaultCameraSettings]
 		file_settings.update({
-			key.lower(): float(value)
+			key.lower(): value.strip() if key.lower() in URL_NAME_SETTINGS else float(value)
 			for key, value in config[name].items()
 			if key.lower() in valid_settings
 		})
@@ -822,6 +827,16 @@ def get_config_from_file(config, name, source, cameratype):
 	if camera_settings['fps'] <= 0:
 		logger.warning(f"[{name}] fps {camera_settings['fps']} must be greater than 0; using default {default_camera_settings['fps']}")
 		camera_settings['fps'] = default_camera_settings['fps']
+
+	# streamname and snapshotname become URL path segments (/<camera name>/<streamname>).
+	for setting in URL_NAME_SETTINGS:
+		if not URL_NAME_RE.fullmatch(camera_settings[setting]):
+			logger.warning(f"[{name}] {setting} '{camera_settings[setting]}' must only contain letters, digits, '-', '_' or '~'; using default {default_camera_settings[setting]}")
+			camera_settings[setting] = default_camera_settings[setting]
+	if camera_settings['streamname'] == camera_settings['snapshotname']:
+		logger.warning(f"[{name}] streamname and snapshotname must be different; using defaults {default_camera_settings['streamname']} and {default_camera_settings['snapshotname']}")
+		camera_settings['streamname'] = default_camera_settings['streamname']
+		camera_settings['snapshotname'] = default_camera_settings['snapshotname']
 
 	camera_data = {
 		key.lower(): value
@@ -990,26 +1005,26 @@ def parse_config(config_file,logger):
 			ui_section = config_dict["UI"]
 			logging_section = config_dict["LOGGING"]
 
-			#Change the keys to UPPER for UI and LOGGING, but not for USBCAMERAS or PICAMERAS	
-			config_dict_ui = {k.upper():v for k,v in ui_section.items()}
+			#Change the keys to lower for UI and UPPER for LOGGING, but not for USBCAMERAS or PICAMERAS
+			config_dict_ui = {k.lower():v for k,v in ui_section.items()}
 			config_dict_logging = {k.upper():v for k,v in logging_section.items()}
 
 			#Convert UI and LOGGING to dot dict
-			UI = DictToClass(config_dict_ui)
-			LOGGING = DictToClass(config_dict_logging)
+			#UI = DictToClass(config_dict_ui)
+			#LOGGING = DictToClass(config_dict_logging)
 
 			# Adjust types and values
 			# UI
-			if not hasattr(UI,'PORT'):
+			if 'port' not in config_dict_ui:
 				raise ValueError('UI section must have a PORT specified')
-			
-			UI.PORT = int(UI.PORT)
-			if UI.PORT < 1024 or UI.PORT > 65535:
+
+			PORT = int(config_dict_ui['port'])
+			if PORT < 1024 or PORT > 65535:
 				raise ValueError('UI PORT must be between 1024 and 65535')
 
 			# LOGGING
-			if not hasattr(LOGGING,'LEVEL') : LOGGING.LEVEL = 'INFO'        
-			if LOGGING.LEVEL not in ['DEBUG','INFO','WARNING']:
+			LOGLEVEL = config_dict_logging.get('LOGLEVEL', 'INFO')
+			if LOGLEVEL not in ['DEBUG','INFO','WARNING']:
 				raise ValueError('LOGGING LEVEL must be one of DEBUG, INFO, WARNING')
 
 			# Process all Camera settings
@@ -1057,7 +1072,7 @@ def parse_config(config_file,logger):
 					camera_results.append(f'\tNo additional settings')
 			highlight_print(camera_results)
 
-			return UI,LOGGING,CAMERAS, CAMERA_CONFIG
+			return PORT,LOGLEVEL,CAMERAS, CAMERA_CONFIG
 		
 		except Exception as e:
 			logger.critical(f'Error parsing config file {config_file}')

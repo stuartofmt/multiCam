@@ -94,14 +94,14 @@ if __name__ == "__main__":
 
 	try:
 		# Get info from config file
-		UI, LOGGING, cameras_to_use, cameras_to_use_configs = parse_config(CONFIGFILENAME,logger)
+		PORT, LOGLEVEL, cameras_to_use, cameras_to_use_configs = parse_config(CONFIGFILENAME,logger)
 	except Exception as e:
 		logger.info(f'{e}')
 		force_quit(1)
 
 
 	# Set logging level
-	logger = set_log_level(LOGGING.LEVEL,logger)
+	logger = set_log_level(LOGLEVEL,logger)
 
 	# Set camera options to default values and override only if configured 
 	try:
@@ -111,14 +111,14 @@ if __name__ == "__main__":
 		logger.info(f'{e}')
 		force_quit(1)
 
-	this_ip_address = getIP(UI.PORT)
+	this_ip_address = getIP(PORT)
 
 	# Start uvicorn in a background thread
 	def run_server():
 		uvicorn.run(
 			app,
 			host=this_ip_address,
-			port=int(UI.PORT),
+			port=PORT,
 			reload=False,
 			log_config=None
 		)
@@ -134,7 +134,7 @@ if __name__ == "__main__":
 			try:
 				camera_payload = camera_settings
 				response = client.post(
-					f"http://{this_ip_address}:{UI.PORT}/api/add-camera",
+					f"http://{this_ip_address}:{PORT}/api/add-camera",
 					json=camera_payload,
 				)
 				if response.is_success and response.json().get("status") == "success":
@@ -152,9 +152,10 @@ if __name__ == "__main__":
 		force_quit(1)
 
 	logger.info('-------------------------------------------------------\n')
-	logger.info(f"View cameras at http://{this_ip_address}:{UI.PORT}\n")
-	logger.info(f"Streaming url is http://{this_ip_address}:{UI.PORT}/<camera name>/stream\n")
-	logger.info(f"Snapshot url is http://{this_ip_address}:{UI.PORT}/<camera name>/snapshot\n")
+	logger.info(f"View cameras at http://{this_ip_address}:{PORT}\n")
+	for camera_name, camera_settings in configured_cameras.items():
+		logger.info(f"{camera_name} streaming url is http://{this_ip_address}:{PORT}/{camera_name}/{camera_settings['streamname']}")
+		logger.info(f"{camera_name} snapshot url is http://{this_ip_address}:{PORT}/{camera_name}/{camera_settings['snapshotname']}\n")
 
 	# Keep the main thread alive
 	server_thread.join()
