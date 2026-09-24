@@ -4,6 +4,12 @@ multiCam is a Duet Web Control SBC plugin for viewing and streaming multiple
 cameras. It supports USB/V4L2 cameras, Raspberry Pi cameras through Picamera2,
 and network cameras that provide an HTTP, HTTPS or RTSP stream.
 
+To assist the user:  When the plugin starts, it logs:
+
++ the cameras it found on the system, with the minimum, maximum and default values of each control;
++ the settings requested in the configuration file;
++ the settings actually applied, after any adjustment (because some may not be supported by the camera or the + values are outside the supported bounds).
+
 ## Configuration
 
 The plugin reads its settings from:
@@ -42,13 +48,6 @@ names are used in the web URLs and must be unique across all three sections.
 To change a camera's settings, add a section with the same name as the camera.
 Settings you leave out use the defaults. All values must be numeric, except
 `streamname` and `snapshotname`. Unknown keys are ignored.
-
-When the plugin starts, it logs:
-
-- the cameras it found, with the minimum, maximum and default values of each
-  control;
-- the settings requested in the configuration file;
-- the settings actually applied, after any adjustment.
 
 ## USB
 
