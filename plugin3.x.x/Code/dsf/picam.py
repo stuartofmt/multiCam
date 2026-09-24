@@ -2,7 +2,7 @@ import cv2
 import threading
 import time
 
-from multi_camera import ClientTracking
+from multi_camera import ClientTracking, normalize_rotation
 
 
 class Picamera2Stream(ClientTracking):
@@ -14,12 +14,15 @@ class Picamera2Stream(ClientTracking):
         height=480,
         rotate=0,
         jpegresolution=95,
+        controls=None,
     ):
         self.camera_index = camera_index
         self.fps = fps
         self.width = width
         self.height = height
-        self.rotate = rotate
+        self.rotate = normalize_rotation(rotate)
+        # libcamera control values ({real_name: value}); they only last for one camera session.
+        self.controls = controls or {}
         self.jpegresolution = jpegresolution
         self.picam2 = None
         self.thread = None
@@ -54,7 +57,10 @@ class Picamera2Stream(ClientTracking):
             configuration = self.picam2.create_video_configuration(
                 main={"size": (width, height), "format": "RGB888"},
                 transform=transform,
-                controls={"FrameDurationLimits": (frame_duration_us, frame_duration_us)},
+                controls={
+                    **self.controls,
+                    "FrameDurationLimits": (frame_duration_us, frame_duration_us),
+                },
             )
             self.picam2.configure(configuration)
 
@@ -70,7 +76,7 @@ class Picamera2Stream(ClientTracking):
     def _apply_rotation(self, frame):
         if self.rotate == 90:
             return cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
-        if self.rotate in (270, -90):
+        if self.rotate == 270:
             return cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
         return frame
 

@@ -31,16 +31,5 @@ class DefaultNetworkCameraSettings(Enum):
 
 # ALLOWED_SETTINGS = ['fps','width','height','jpegresolution','rotate']
 NETWORK_TYPES = ['http://','https://','rtsp://']
-# ============================================================
-# Camera Defaults
-# ============================================================
-
-DEFAULT_CAMERA_WIDTH = 320 * 4
-DEFAULT_CAMERA_HEIGHT = 240 * 4
-DEFAULT_CAMERA_API_PREFERENCE = None
-DEFAULT_CAMERA_COPY_FRAME = False
-
-# JPEG encoding quality for cached frames
-DEFAULT_JPEG_QUALITY = 95
 
 

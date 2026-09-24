@@ -12,7 +12,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from defaults import (
     STATIC_DIR,
-    DEFAULT_JPEG_QUALITY,
     DefaultCameraSettings,
 )
 from multi_camera import MultiCameraManager
@@ -35,6 +34,8 @@ class CameraConfig(BaseModel):
     rotate: int = 0
     jpegresolution: int = 95
     format: Optional[str] = None
+    # Picamera only: libcamera controls applied when the camera starts.
+    controls: Optional[dict] = None
 
     @model_validator(mode="after")
     def validate_camera_type_settings(self):
@@ -61,7 +62,6 @@ class CameraConfig(BaseModel):
 # Streaming Settings
 # ============================================================
 
-JPEG_QUALITY = DEFAULT_JPEG_QUALITY
 SNAPSHOT_TIMEOUT_SEC = 3.0
 
 # ============================================================
@@ -136,6 +136,7 @@ async def api_add_camera(config: CameraConfig):
             jpegresolution=config.jpegresolution,
             cameratype=config.cameratype,
             format=config.format,
+            controls=config.controls,
         )
         return {"status": "success", "name": config.name}
     except Exception as e:
@@ -160,12 +161,8 @@ async def api_start_camera(request: StartCameraRequest):
 # ============================================================
 
 async def mjpeg_generator(request: Request, camera_name: str):
-    camera = manager.cameras.get(camera_name)
-    if camera is None:
+    if camera_name not in manager.cameras:
         return
-
-    fps = getattr(camera, "fps", DefaultCameraSettings.fps.value)
-    stream_interval = 1.0 / fps if fps > 0 else 1.0 / DefaultCameraSettings.fps.value
 
     frame_count = 0
     last_timestamp = None
@@ -179,8 +176,7 @@ async def mjpeg_generator(request: Request, camera_name: str):
                 break
 
             try:
-                start = time.perf_counter()
-
+                # Capture threads already limit output to the camera fps; only send new frames.
                 jpg_bytes, timestamp = manager.get_jpeg_with_timestamp(camera_name)
 
                 if jpg_bytes is None or timestamp == last_timestamp:
@@ -199,12 +195,6 @@ async def mjpeg_generator(request: Request, camera_name: str):
                 frame_count += 1
                 if frame_count % 100 == 0:
                     logger_module.logger.debug(f"[{camera_name}] Streamed {frame_count} frames")
-
-                elapsed = time.perf_counter() - start
-                sleep_time = stream_interval - elapsed
-
-                if sleep_time > 0:
-                    await asyncio.sleep(sleep_time)
             except Exception as e:
                 logger_module.logger.error(f"Error in mjpeg_generator for {camera_name}: {e}")
                 break

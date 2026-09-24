@@ -18,6 +18,13 @@ import logger_module
 NETWORK_TIMEOUT_MSEC = 10000
 # Accept a frame slightly early so source jitter doesn't halve the output rate.
 FRAME_DUE_TOLERANCE = 0.25
+# Seconds without a frame before a network source is reopened.
+RECONNECT_AFTER_SEC = 5.0
+
+
+def normalize_rotation(rotate) -> int:
+	"""Round to the nearest quarter turn, returned as 0, 90, 180 or 270 (clockwise)."""
+	return (int((float(rotate) + 45) // 90) * 90) % 360
 
 
 def _is_jpeg(data) -> bool:
@@ -80,7 +87,7 @@ class CameraStream(ClientTracking):
 
 		self.api_preference = api_preference
 
-		self.rotate = rotate
+		self.rotate = normalize_rotation(rotate)
 		self.jpegresolution = jpegresolution
 		self.format = format
 
@@ -189,6 +196,10 @@ class CameraStream(ClientTracking):
 			]
 		else:
 			params = []
+
+		self._open_args = (backend, ffmpeg_opts, params)
+		self._is_network = is_network_source
+		self._is_http = is_http_source
 
 		self.capture = self._open_capture(backend, ffmpeg_opts, params)
 
@@ -318,26 +329,31 @@ class CameraStream(ClientTracking):
 	def _apply_rotation(self, frame):
 		"""Apply the configured rotation to a frame."""
 
-		if frame is None or self.rotate == 0:
-			return frame
-
-		# Adjust rotation angle if not cardinal
-		if self.rotate < 0:
-			self.rotate = -90
-		else:
-			self.rotate = int((self.rotate + 45) // 90) * 90
-		if self.rotate >= 360:
-			self.rotate = 0
-		
-
 		if self.rotate == 90:
 			return cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
-		if self.rotate in (270, -90):
+		if self.rotate == 270:
 			return cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
 		if self.rotate == 180:
 			return cv2.rotate(frame, cv2.ROTATE_180)
 
 		return frame
+
+	def _reopen(self):
+		"""Reopen a network source after it stops delivering frames."""
+
+		logger_module.logger.warning(f"No frames from {self.source}; reconnecting")
+
+		self.capture.release()
+		self.capture = self._open_capture(*self._open_args)
+
+		if not self.capture.isOpened():
+			logger_module.logger.warning(f"Reconnect to {self.source} failed; will retry")
+			return
+
+		if self.passthrough and self._is_http:
+			self.capture.set(cv2.CAP_PROP_FORMAT, -1)
+
+		logger_module.logger.info(f"Reconnected to {self.source}")
 
 	def _update(self):
 		"""
@@ -345,6 +361,7 @@ class CameraStream(ClientTracking):
 		"""
 
 		next_due = 0.0
+		last_frame_at = time.monotonic()
 
 		while self.running:
 			# Always grab so device/network buffers are drained and frames stay current.
@@ -357,8 +374,13 @@ class CameraStream(ClientTracking):
 
 			if not self.capture.grab():
 				# Failed/disconnected sources return immediately; avoid spinning.
+				if self._is_network and time.monotonic() - last_frame_at >= RECONNECT_AFTER_SEC:
+					self._reopen()
+					last_frame_at = time.monotonic()
 				time.sleep(0.1)
 				continue
+
+			last_frame_at = time.monotonic()
 
 			if not self._has_clients.is_set():
 				continue
@@ -450,6 +472,7 @@ class MultiCameraManager:
 		jpegresolution: int,
 		cameratype: Optional[str],
 		format: Optional[str] = None,
+		controls: Optional[dict] = None,
 	):
 
 		if name in self.cameras:
@@ -467,6 +490,7 @@ class MultiCameraManager:
 				height=height,
 				rotate=rotate,
 				jpegresolution=jpegresolution,
+				controls=controls,
 			)
 		else:
 			self.cameras[name] = CameraStream(
