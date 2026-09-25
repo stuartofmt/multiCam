@@ -36,13 +36,13 @@ port = 8044
 # sources must be of type /dev/VideoN
 # e.g.  Cam1= /dev/video0     
  
-Cam1 = /dev/video0
-Cam 2 = dev/video2
+;Cam1 = /dev/video0
+;Cam 2 = dev/video2
 
 [PICAMERAS]
 # Each entry adds one Picamera.
 # as name=index (usually 0 if only one pi camera)
-Picamera = 0
+;Picamera = 0
 
 [STREAMS]
 # for ech stream enter the name and source
@@ -51,8 +51,8 @@ Picamera = 0
 # sources must be one of: http:// ,  https:// , rstp://
 # e.g.  Highway= http://192.168.30.41:8044/Cam1/stream     
  
-Cam1Loopback = http://192.168.30.41:8044/Picamera/stream
-Cam2Loopback = http://192.168.30.41:8044/Cam 2/video
+;IPCam1 = http://192.168.30.41:8044/Picamera/stream
+;NozzleCam = http://192.168.30.41:8044/Cam 2/video
 
 
 # ----------------------------------------------------------------
@@ -94,8 +94,6 @@ Cam2Loopback = http://192.168.30.41:8044/Cam 2/video
 # This is because [STREAMS] are effectively a pass-through
 
 # Below are examples
-[Cam1]
-
 
 [Cam2]
 brightness = 2
@@ -107,9 +105,6 @@ snapshotname = still
 brightness = 0
 rotate = 180
 jpegresolution = 80
-
-[Cam2Loopback]
-rotate = 90
 
 
 
