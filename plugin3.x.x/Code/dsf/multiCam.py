@@ -77,7 +77,7 @@ if __name__ == "__main__":
 
 	global progName, progVersion
 	progName = os.path.splitext(os.path.basename(sys.argv[0]))[0]
-	progVersion = '0.0.9'
+	progVersion = '1.0.0'
 
 	CONFIGFILENAME = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent / "config.ini"
 	LOGFILENAME = CONFIGFILENAME.parent / "multiCam.log"

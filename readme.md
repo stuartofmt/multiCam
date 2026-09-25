@@ -183,10 +183,13 @@ Options are passed to libcamera when the camera starts.
 The plugin checks these values against the camera's sensor modes and adjusts
 them where necessary:
 
-- **Resolution:** if `width`×`height` is not a sensor mode, the next smaller
-  mode is used. If there is no smaller mode, the largest is used.
-- **Frame rate:** any rate up to the mode's maximum is accepted. Higher values
-  are reduced to that maximum.
+- **Resolution:** sensor modes are the sizes the sensor reads out. The camera
+  scales its output from a sensor mode, so any `width`×`height` that fits
+  inside at least one sensor mode is used as requested. If it is larger than
+  every sensor mode, the next smaller mode (by area) is used.
+- **Frame rate:** the limit is the highest maximum rate among the sensor modes
+  large enough for `width`×`height`. Any rate up to that limit is accepted.
+  Higher values are reduced to it.
 
 Frames are always captured as RGB and encoded to JPEG at `jpegresolution`.
 A rotation of 180 is done by the camera hardware and costs no CPU. Rotations of

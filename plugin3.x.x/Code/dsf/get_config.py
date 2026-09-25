@@ -736,20 +736,25 @@ def validate_pi_camera_configs(cameras: Dict[str, dict], applied_options: Option
 		requested_wh = (int(cam["width"]), int(cam["height"]))
 		requested_fps = float(cam["fps"])
 
-		if requested_wh in modes:
+		# Sensor modes are raw readout sizes; the ISP scales the output stream
+		# to any size, so any resolution within a sensor mode is supported.
+		covering = [wh for wh in modes if wh[0] >= requested_wh[0] and wh[1] >= requested_wh[1]]
+		if covering:
 			chosen_wh = requested_wh
 		else:
 			chosen_wh = _next_lower_resolution(requested_wh, list(modes.keys()))
+			covering = [chosen_wh]
 			logger.info(
-				f"[{cam_name}] Resolution {requested_wh[0]}x{requested_wh[1]} not "
-				f"supported on camera {source}; Adjusting to "
+				f"[{cam_name}] Resolution {requested_wh[0]}x{requested_wh[1]} exceeds "
+				f"the sensor on camera {source}; Adjusting to "
 				f"{chosen_wh[0]}x{chosen_wh[1]}"
 			)
 
 		cam["width"], cam["height"] = chosen_wh
 
-		# Pi sensors accept any frame rate up to the mode's maximum.
-		max_fps = modes[chosen_wh]
+		# Pi sensors accept any frame rate up to the maximum of the sensor mode
+		# libcamera picks: the fastest mode large enough for the output.
+		max_fps = max(modes[wh] for wh in covering)
 		if requested_fps > max_fps:
 			logger.info(
 				f"[{cam_name}] fps {requested_fps} not supported at "
@@ -1163,7 +1168,8 @@ def configure_cameras(installed_cameras,camera_list,requested_options):
 					if option == 'name':
 						camera_results.append(f'{value}')
 					else:
-						camera_results.append(f'\t--{option} = {value}')
+						if option != 'controls': # Dont want this displayed
+							camera_results.append(f'\t--{option} = {value}')
 
 			highlight_print(camera_results)
 
