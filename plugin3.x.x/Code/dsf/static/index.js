@@ -47,8 +47,8 @@ async function loadCameras() {
         console.warn(`Camera: ${cameraName}, Stream URL: ${streamUrl.href}, Snapshot URL: ${snapshotUrl.href}`);
         const img = document.createElement("img");
 
-        img.src = streamUrl.href;
         img.dataset.stream = streamUrl.href;
+        img.src = uniqueStreamUrl(img.dataset.stream);
         img.alt = cameraName;
 
         card.appendChild(title);
@@ -65,9 +65,35 @@ async function loadCameras() {
 // Release them while this tab is hidden so stream / snapshot links opened in other tabs can connect.
 const BLANK_IMAGE = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 
+// A stream response never completes, so browsers (notably WebKit / iOS) may hold or merge a second
+// request for a URL already streaming in another tab. A unique query string forces a fresh connection.
+function uniqueStreamUrl(stream) {
+    const url = new URL(stream);
+    url.searchParams.set("t", Date.now());
+    return url.href;
+}
+
 document.addEventListener("visibilitychange", () => {
-    for (const img of document.querySelectorAll("img[data-stream]")) {
-        img.src = document.hidden ? BLANK_IMAGE : img.dataset.stream;
+    const images = document.querySelectorAll("img[data-stream]");
+
+    if (document.hidden) {
+        // WebKit (all iOS browsers) keeps an MJPEG connection open when an <img> src changes;
+        // window.stop() is what actually aborts the in-flight stream loads.
+        window.stop();
+        for (const img of images) {
+            img.src = BLANK_IMAGE;
+        }
+        return;
+    }
+
+    if (images.length === 0) {
+        // Hidden before the initial camera list finished loading (window.stop() aborted it).
+        loadCameras();
+        return;
+    }
+
+    for (const img of images) {
+        img.src = uniqueStreamUrl(img.dataset.stream);
     }
 });
 

@@ -184,6 +184,7 @@ async def mjpeg_generator(request: Request, camera_name: str):
 
     # Capture threads only encode while at least one client is registered.
     manager.add_client(camera_name)
+    logger_module.logger.debug(f"Client connected: {camera_name}")
     try:
         while True:
             if await request.is_disconnected():
@@ -228,6 +229,7 @@ async def stream_camera(request: Request, camera_name: str):
             "multipart/x-mixed-replace;"
             " boundary=frame"
         ),
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
     )
 
 
