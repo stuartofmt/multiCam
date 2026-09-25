@@ -6,9 +6,9 @@ and network cameras that provide an HTTP, HTTPS or RTSP stream.
 
 To assist the user:  When the plugin starts, it logs:
 
-+ the cameras it found on the system, with the minimum, maximum and default values of each control;
-+ the settings requested in the configuration file;
-+ the settings actually applied, after any adjustment (because some may not be supported by the camera or the + values are outside the supported bounds).
+- the cameras it found on the system, with the minimum, maximum and default values of each control;
+- the settings requested in the configuration file;
+- the settings actually applied, after any adjustment (because some may not be supported by the camera or the values are outside the supported bounds).
 
 ## Configuration
 
