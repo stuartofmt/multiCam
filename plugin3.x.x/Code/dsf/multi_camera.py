@@ -130,12 +130,16 @@ class CameraStream(ClientTracking):
 		rotate: int,
 		jpegresolution: int,
 		format: Optional[str] = None,
+		capturefps: Optional[float] = None,
 	):
 
 		self.source = source
 		self.cameratype = cameratype
 
+		# fps is the rate served; the device can run faster (capturefps) and
+		# the capture loop drops frames to match fps.
 		self.fps = fps
+		self.capturefps = capturefps if capturefps is not None else fps
 		self.frame_interval = 1.0 / fps
 
 		self.width = width
@@ -288,10 +292,10 @@ class CameraStream(ClientTracking):
 					int(self.height)
 				)
 
-			if self.fps is not None:
+			if self.capturefps is not None:
 				self.capture.set(
 					cv2.CAP_PROP_FPS,
-					float(self.fps)
+					float(self.capturefps)
 				)
 
 		#
@@ -529,6 +533,7 @@ class MultiCameraManager:
 		cameratype: Optional[str],
 		format: Optional[str] = None,
 		controls: Optional[dict] = None,
+		capturefps: Optional[float] = None,
 	):
 
 		if name in self.cameras:
@@ -559,6 +564,7 @@ class MultiCameraManager:
 				rotate=rotate,
 				jpegresolution=jpegresolution,
 				format=format,
+				capturefps=capturefps,
 			)
 
 	def start(self):

@@ -28,6 +28,8 @@ class CameraConfig(BaseModel):
     source: str | int
     cameratype: str
     fps: Optional[float] = None
+    # USB only: rate requested from the device, when it differs from the served fps.
+    capturefps: Optional[float] = None
     width: Optional[int] = None
     height: Optional[int] = None
     api_preference: Optional[int] = None
@@ -140,6 +142,7 @@ async def api_add_camera(config: CameraConfig):
             name=config.name,
             source=config.source,
             fps=config.fps,
+            capturefps=config.capturefps,
             width=config.width,
             height=config.height,
             api_preference=config.api_preference,

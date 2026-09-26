@@ -4,13 +4,29 @@ multiCam is a Duet Web Control SBC plugin for viewing and streaming multiple
 cameras. It supports USB/V4L2 cameras, Raspberry Pi cameras through Picamera2,
 and network cameras that provide an HTTP, HTTPS or RTSP stream.
 
-To assist the user:  When the plugin starts, it logs:
+It has been programmed with efficiency in mind:
+
+- where possible the camera hardware is used for options like brightness, contrast etc.  If these are not handled by the hardware they are ignored
+- separate libraries are used for USB, PICAMERA and STREAM (largely pass-through)
+- capture and streaming are separated - many designs combine these which can affect latency and throughput
+- frame dropping occurs at capture time, so dropped frames are not decoded or sent, saving CPU and bandwidth
+- MJPEG streams are sent directly to the browser without re-encoding when no rotation is applied
+- resolution and frame rate are automatically adjusted to camera capabilities without forcing expensive conversions
+- hardware acceleration is used where available (e.g., 180° rotation on Pi cameras costs no CPU)
+- control values are validated and clamped to device limits rather than attempting invalid settings that would fail
+
+To assist in the identification / selection of cameras:  If there are no cameras configured - When the plugin starts, it logs:
 
 - the cameras it found on the system, with the minimum, maximum and default values of each control;
+
+In normal operation it logs the above and additionally:
+
 - the settings requested in the configuration file;
 - the settings actually applied, after any adjustment (because some may not be supported by the camera or the values are outside the supported bounds).
 
 ## Configuration
+
+**Note that the settings shown below are examples**
 
 The plugin reads its settings from:
 
@@ -66,7 +82,7 @@ support video capture are listed in the startup log; use one of those.
 ### USB options
 
 Options are camera controls, set through `v4l2-ctl`, so `v4l-utils` must be
-installed.
+installed (the plugin does this).
 
 | Option         | V4L2 control                                                 |
 |----------------|--------------------------------------------------------------|
@@ -84,8 +100,7 @@ installed.
   maximum.
 - Options the camera does not support are skipped.
 - Ranges vary between cameras. For example, brightness may be `-64..64` on one
-  camera and `0..255` on another. Check the startup log, or
-  `v4l2-ctl -d /dev/videoN --list-ctrls`, for your camera's ranges.
+  camera and `0..255` on another. Check the startup log for your camera's ranges.
 - `balance` and `autofocus` switch the automatic mode on (1) or off (0).
 - `autoexposure` uses the driver's menu values. On many UVC cameras, 1 is
   manual and 3 is automatic (aperture priority).
@@ -102,15 +117,37 @@ installed.
 | `streamname`     | stream   | Name of the stream URL. See [User Interface](#user-interface).   |
 | `snapshotname`   | snapshot | Name of the snapshot URL. See [User Interface](#user-interface). |
 
-The plugin checks these values against the formats the camera reports
-(`v4l2-ctl --list-formats-ext`) and adjusts them where necessary:
+The plugin checks these values against the formats the camera reports and adjusts them where necessary:
 
 - **Format:** MJPG is requested. If the camera does not offer MJPG, YUYV is
   used, or failing that the first format the camera reports.
 - **Resolution:** if `width`×`height` is not supported, the next smaller
-  resolution is used. If there is no smaller one, the largest is used.
-- **Frame rate:** if `fps` is not supported at that resolution, the next lower
-  rate is used. If there is no lower rate, the highest is used.
+  resolution (by area) is used. If there is no smaller one, the next larger one
+  is used.
+- **Frame rate:** if `fps` is not supported at that resolution, the camera is
+  run at the next lower rate. If there is no lower rate, it is run at the next
+  higher one, and the extra frames are dropped so the stream still runs at
+  `fps`. Dropped frames are not decoded or sent, so they cost little CPU and no
+  bandwidth.
+
+For example, for a camera that offers 1920x1080, 1280x720, 640x480 and 320x240:
+
+| Requested `width`×`height` | Used      |
+|----------------------------|-----------|
+| 1024×768                   | 640×480   |
+| 160×120                    | 320×240   |
+| 4000×3000                  | 1920×1080 |
+
+And for a resolution that offers 30, 15, 10 and 5 fps:
+
+| Requested `fps` | Camera runs at | Streamed at |
+|-----------------|----------------|-------------|
+| 20              | 15             | 15          |
+| 3               | 5              | 3           |
+| 60              | 30             | 30          |
+
+The startup log shows both rates: `--capturefps` is the rate the camera runs
+at, and `--fps` is the rate streamed.
 
 If the camera delivers MJPG and `rotate` is 0, frames are sent to the browser
 unchanged. This uses very little CPU, and `jpegresolution` has no effect.
@@ -186,7 +223,8 @@ them where necessary:
 - **Resolution:** sensor modes are the sizes the sensor reads out. The camera
   scales its output from a sensor mode, so any `width`×`height` that fits
   inside at least one sensor mode is used as requested. If it is larger than
-  every sensor mode, the next smaller mode (by area) is used.
+  every sensor mode, the next smaller mode (by area) is used, or if there is no
+  smaller one, the next larger one.
 - **Frame rate:** the limit is the highest maximum rate among the sensor modes
   large enough for `width`×`height`. Any rate up to that limit is accepted.
   Higher values are reduced to it.

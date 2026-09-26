@@ -1,5 +1,8 @@
 import configparser
+import errno
+import fcntl
 import os
+import struct
 import re
 import subprocess
 import glob
@@ -174,6 +177,42 @@ def _clamp(source, canonical_name, value, bounds):
 	return value
 
 
+# VIDIOC_REQBUFS = _IOWR('V', 8, struct v4l2_requestbuffers), a 20-byte struct:
+# count, type, memory, capabilities (u32 each), flags (u8), reserved[3] (u8).
+_VIDIOC_REQBUFS = 0xC0145608
+_V4L2_BUF_TYPE_VIDEO_CAPTURE = 1
+_V4L2_MEMORY_MMAP = 1
+
+
+class CameraInUseError(RuntimeError):
+	"""Raised when a camera can't be set up because another process is streaming from it."""
+
+
+def _usb_camera_in_use(device_path):
+	"""
+	Return True if another process owns the capture stream of a V4L2 device.
+
+	V4L2 lets any number of processes open a device and change its controls;
+	only the stream is exclusive, and it belongs to whichever process first
+	requested buffers. Requesting a buffer here fails with EBUSY while another
+	process holds the stream. The buffer is released again straight away.
+	"""
+	fd = os.open(device_path, os.O_RDWR | os.O_NONBLOCK)
+	try:
+		request = struct.pack("5I", 1, _V4L2_BUF_TYPE_VIDEO_CAPTURE, _V4L2_MEMORY_MMAP, 0, 0)
+		try:
+			fcntl.ioctl(fd, _VIDIOC_REQBUFS, request)
+		except OSError as e:
+			if e.errno == errno.EBUSY:
+				return True
+			raise
+		release = struct.pack("5I", 0, _V4L2_BUF_TYPE_VIDEO_CAPTURE, _V4L2_MEMORY_MMAP, 0, 0)
+		fcntl.ioctl(fd, _VIDIOC_REQBUFS, release)
+		return False
+	finally:
+		os.close(fd)
+
+
 def get_camera_options_usb(camera_name, source):
 	"""
 	Reset ALL controls a USB/UVC camera reports back to their default
@@ -200,6 +239,11 @@ def get_camera_options_usb(camera_name, source):
 	# UVC control values persist in the device, so resetting once per run is enough.
 	if source in _USB_OPTIONS_CACHE:
 		return _USB_OPTIONS_CACHE[source]
+
+	# Controls belong to the device, so resetting them would change the picture
+	# of whatever process is already streaming from it; don't touch a busy camera.
+	if _usb_camera_in_use(source):
+		raise CameraInUseError(f'{source} is in use by another process')
 
 	try:
 		all_controls = _parse_list_ctrls(source)
@@ -327,11 +371,13 @@ Fallback rules (as specified):
 	 fall back to the first format the device reports.
   2. If the requested width/height IS supported under the chosen
 	 format, but the requested fps is not, drop to the next lower
-	 fps available at that resolution.
+	 fps available at that resolution, or if there is none, rise to
+	 the next higher one.
   3. If the requested width/height is NOT supported, drop to the
 	 next lower resolution (by pixel area) available under the
-	 chosen format. If the original fps isn't available at that new
-	 resolution, drop to the next lower fps available there.
+	 chosen format, or if there is none, rise to the next size up. If the original fps isn't available at that new
+	 resolution, drop to the next lower fps available there (or the
+	 next higher one if there is none lower).
 """
 
 # Aliases: config may say "MPEG"/"MJPEG", v4l2-ctl reports the fourcc "MJPG".
@@ -418,23 +464,23 @@ def _next_lower_resolution(
 	available_whs: "List[Tuple[int, int]]",
 ) -> Optional[Tuple[int, int]]:
 	"""Largest available resolution (by pixel area) that is still smaller
-	than requested. Falls back to the largest available if nothing is
-	smaller (e.g. requested was already the smallest/unmatched)."""
+	than requested. Falls back to the next size up (the smallest available
+	that is not smaller) if nothing is smaller."""
 
 	if not available_whs:
 		return None
 
 	requested_area = requested_wh[0] * requested_wh[1]
 
-	by_area_desc = sorted(
-		set(available_whs),
-		key=lambda wh: wh[0] * wh[1],
-		reverse=True,
-	)
+	# Width breaks ties between resolutions with the same area, so the result is deterministic.
+	def area_key(wh):
+		return (wh[0] * wh[1], wh[0])
 
-	lower = [wh for wh in by_area_desc if wh[0] * wh[1] < requested_area]
+	lower = [wh for wh in available_whs if wh[0] * wh[1] < requested_area]
+	if lower:
+		return max(lower, key=area_key)
 
-	return lower[0] if lower else by_area_desc[0]
+	return min(available_whs, key=area_key)
 
 
 def _next_lower_fps(
@@ -442,16 +488,17 @@ def _next_lower_fps(
 	available_fps: List[float],
 ) -> Optional[float]:
 	"""Highest available fps that is still lower than requested. Falls
-	back to the highest available fps if nothing is lower."""
+	back to the next higher fps (the lowest available above requested)
+	if nothing is lower."""
 
 	if not available_fps:
 		return None
 
-	by_fps_desc = sorted(set(available_fps), reverse=True)
+	lower = [f for f in available_fps if f < requested_fps]
+	if lower:
+		return max(lower)
 
-	lower = [f for f in by_fps_desc if f < requested_fps]
-
-	return lower[0] if lower else by_fps_desc[0]
+	return min(f for f in available_fps if f > requested_fps)
 
 
 def _add_applied_options(cam: dict, options: Optional[dict]) -> None:
@@ -571,13 +618,23 @@ def validate_usb_camera_configs(cameras: Dict[str, dict], applied_options: Optio
 						f"{source}; leaving fps as requested"
 					)
 					continue
+				if chosen_fps > requested_fps:
+					fallback = (
+						f"capturing at {int(chosen_fps)} and streaming at "
+						f"{int(requested_fps)}"
+					)
+				else:
+					fallback = f"falling back to {int(chosen_fps)}"
 				logger.info(
-					f"[{cam_name}] fps {requested_fps} not supported at "
+					f"[{cam_name}] fps {int(requested_fps)} not supported at "
 					f"{chosen_wh[0]}x{chosen_wh[1]} for '{chosen_format}' on "
-					f"{source}; falling back to {chosen_fps}"
+					f"{source}; {fallback}"
 				)
 
-			cam["fps"] = chosen_fps
+			# The camera runs at capturefps; the capture thread drops frames to serve fps.
+			# If the camera only offers a higher rate, the requested rate is still served.
+			cam["capturefps"] = chosen_fps
+			cam["fps"] = min(requested_fps, chosen_fps)
 		except Exception as e:
 			logger.info(f'FPS setting{e}')
 			raise
@@ -610,6 +667,15 @@ PI_REAL_TO_CANONICAL = {v: k for k, v in CONTROL_NAME_MAP_PICAM.items()}
 _PICAM_INFO_CACHE = {}
 
 
+def _picam_error_is_busy(error):
+	"""Return True if a Picamera2 error, or any error it was raised from, is EBUSY."""
+	while error is not None:
+		if getattr(error, 'errno', None) == errno.EBUSY or 'Device or resource busy' in str(error):
+			return True
+		error = error.__cause__ or error.__context__
+	return False
+
+
 def get_camera_options_picam(camera_name, source):
 	"""
 	Return min/max/default for the AllowedOptions controls a Pi camera supports.
@@ -622,7 +688,14 @@ def get_camera_options_picam(camera_name, source):
 		{source: {canonical_name: {"min": ..., "max": ..., "default": ...}}}
 	"""
 	if source not in _PICAM_INFO_CACHE:
-		picam2 = Picamera2(camera_num=source)
+		try:
+			picam2 = Picamera2(camera_num=source)
+		except RuntimeError as e:
+			# Picamera2 reports "Camera __init__ sequence did not complete."; the
+			# underlying acquire() error says whether the camera is busy.
+			if _picam_error_is_busy(e):
+				raise CameraInUseError(f'Camera {source} is in use by another process') from e
+			raise
 		try:
 			all_controls = picam2.camera_controls
 			sensor_modes = picam2.sensor_modes
@@ -757,9 +830,9 @@ def validate_pi_camera_configs(cameras: Dict[str, dict], applied_options: Option
 		max_fps = max(modes[wh] for wh in covering)
 		if requested_fps > max_fps:
 			logger.info(
-				f"[{cam_name}] fps {requested_fps} not supported at "
+				f"[{cam_name}] fps {int(requested_fps)} not supported at "
 				f"{chosen_wh[0]}x{chosen_wh[1]} on camera {source}; "
-				f"falling back to {max_fps}"
+				f"falling back to {int(max_fps)}"
 			)
 			cam["fps"] = max_fps
 		else:
@@ -861,6 +934,10 @@ def get_config_from_file(config, name, source, cameratype):
 	return camera_data, camera_file_options
 
 def highlight_print(msg):
+	"""
+	Log a message, or a list/tuple of lines, at INFO level as a block
+	framed by separator lines so it stands out in the log.
+	"""
 	highlight = ["","=" * 95]
 	if isinstance(msg, (list, tuple)):
 		highlight.extend(msg)
@@ -915,7 +992,7 @@ def find_usb_cameras():
 		# --- USB cameras via /dev/video* (capability-checked) ---
 		camera_results.append("USB camera(s) found with these options:")
 		for dev in usb_devices:
-			camera_results.append(f"-- {dev}")
+			camera_results.append(f"\n-- {dev}")
 			try:
 				camera_options = get_camera_options_usb(f"USB-{dev}", dev)
 				if camera_options.get(dev):
@@ -924,6 +1001,8 @@ def find_usb_cameras():
 						max_val = bounds.get("max", "N/A")
 						default_val = bounds.get("default", "N/A")
 						camera_results.append(f"   {control_name}: min={min_val}, max={max_val}, default={default_val}")
+			except CameraInUseError:
+				camera_results.append("   In use by another process")
 			except Exception as e:
 				logger.debug(f"Could not query options for {dev}: {e}")
 	else:
@@ -935,18 +1014,22 @@ def find_usb_cameras():
 
 
 def find_pi_cameras():
+	"""
+	Log the Pi (non-USB) cameras found by Picamera2 and the options each
+	supports.
 
+	Returns a list of the Picamera2 slots of those cameras. These match the
+	camera sources that parse_config resolves from PICAMERAS.
+	"""
 	try:
 		pi_camera_indices = get_pi_camera_indices()
-		pi_cameras = list(range(len(pi_camera_indices)))
 
 		camera_results = []
-		if pi_cameras:
+		if pi_camera_indices:
 			camera_results.append(f"PiCamera(s) found with these options:")
-			for index in pi_cameras:
-				camera_results.append(f"--index {index}")
+			for index, pi_camera_index in enumerate(pi_camera_indices):
+				camera_results.append(f"\n--index {index}")
 				try:
-					pi_camera_index = pi_camera_indices[index]
 					camera_options = get_camera_options_picam(f"PiCamera-{index}", pi_camera_index)
 					if camera_options.get(pi_camera_index):
 						for control_name, bounds in camera_options[pi_camera_index].items():
@@ -954,6 +1037,8 @@ def find_pi_cameras():
 							max_val = bounds.get("max", "N/A")
 							default_val = bounds.get("default", "N/A")
 							camera_results.append(f"   {control_name}: min={min_val}, max={max_val}, default={default_val}")
+				except CameraInUseError:
+					camera_results.append("   In use by another process")
 				except Exception as e:
 					logger.debug(f"Could not query options for camera index {index}: {e}")
 		else:
@@ -961,19 +1046,35 @@ def find_pi_cameras():
 
 		highlight_print(camera_results)
 
-		return pi_cameras
+		return pi_camera_indices
 	except Exception as e:
 		raise Exception(f"Error listing Pi cameras - {e}") from e
 
 
 def get_pi_camera_indices():
-	"""Return Picamera2 slots belonging to non-USB cameras."""
-	cameras = Picamera2.global_camera_info()
-	return [
-		index
-		for index, cam_info in enumerate(cameras)
-		if 'usb' not in cam_info.get('Id', '').lower()
-	]
+	"""
+	Return the Picamera2 camera numbers of the Pi (CSI) cameras, in
+	global_camera_info order.
+
+	libcamera also lists USB cameras (uvcvideo pipeline), so only cameras
+	on a Raspberry Pi pipeline (rpi/vc4, rpi/pisp) are kept.
+	"""
+	# global_camera_info is sorted by Id, so its order is not the camera number; 'Num' is.
+	# It omits PipelineHandler, so read that from the libcamera camera itself.
+	libcamera_cameras = Picamera2._cm.cms.cameras
+	pi_cameras = []
+	for cam_info in Picamera2.global_camera_info():
+		num = cam_info['Num']
+		properties = {k.name: v for k, v in libcamera_cameras[num].properties.items()}
+		pipeline = properties.get('PipelineHandler')
+		if pipeline is not None:
+			is_pi_camera = pipeline.startswith('rpi/')
+		else:
+			# Older libcamera doesn't report PipelineHandler.
+			is_pi_camera = '/usb' not in cam_info['Id'].lower()
+		if is_pi_camera:
+			pi_cameras.append(num)
+	return pi_cameras
 
 
 def resolve_pi_camera_index(camera_number):
@@ -992,6 +1093,21 @@ def resolve_pi_camera_index(camera_number):
 
 
 def parse_config(config_file,logger):
+	"""
+	Read and validate the config file.
+
+	Checks the UI port and LOGGING level, and builds settings for each
+	camera listed under USBCAMERAS, PICAMERAS and STREAMS. The requested
+	settings are logged.
+
+	Returns:
+		(PORT, LOGLEVEL, CAMERAS, CAMERA_CONFIG), where CAMERAS maps camera
+		name to its settings and CAMERA_CONFIG maps camera name to its
+		AllowedOptions from the file. Returns False if the file does not exist.
+
+	Raises:
+		Exception('Config Issue') if the file is invalid.
+	"""
 	if not os.path.exists(config_file):
 		logger.debug(f"No Config file:  {config_file}")
 		return False
@@ -1058,7 +1174,8 @@ def parse_config(config_file,logger):
 					CAMERAS[name], CAMERA_CONFIG[name] = get_config_from_file(config, name, source,"STREAM")
 
 			if CAMERAS == {}:
-				raise ValueError('At least one camera must be specified in USBCAMERAS or PICAMERAS')		
+				get_installed_cameras()
+				raise ValueError('At least one camera must be specified in [USBCAMERAS] or [PICAMERAS] or [STREAM]')		
 
 			# All tests passed - log effective configuration
 			camera_results = []
@@ -1067,7 +1184,7 @@ def parse_config(config_file,logger):
 			for name, options in CAMERAS.items():
 				for option, value in options.items():
 					if option == 'name':
-						camera_results.append(f'{value}')
+						camera_results.append(f'\n{value}')
 					else:
 						camera_results.append(f'\t--{option} = {value}')
 				if CAMERA_CONFIG and CAMERA_CONFIG[name]:
@@ -1085,6 +1202,12 @@ def parse_config(config_file,logger):
 			raise Exception('Config Issue')
 
 def get_installed_cameras():
+	"""
+	Detect attached cameras and log what was found.
+
+	Returns USB device paths (e.g. "/dev/video0") followed by Pi camera
+	Picamera2 slots.
+	"""
 	usb_cameras = find_usb_cameras()
 	pi_cameras = find_pi_cameras()
 
@@ -1092,6 +1215,23 @@ def get_installed_cameras():
 
 	
 def configure_cameras(installed_cameras,camera_list,requested_options):
+		"""
+		Apply the requested options to each configured camera and validate
+		its format, resolution and fps against what the device supports.
+
+		Args:
+			installed_cameras: sources returned by get_installed_cameras.
+			camera_list: camera settings keyed by camera name, as returned
+				by parse_config. Updated in place.
+			requested_options: AllowedOptions from the config file, keyed by
+				camera name.
+
+		Returns:
+			camera_list with USB and Pi cameras that are not installed, or that
+			could not be set up (e.g. busy in another process), removed, and the remaining settings adjusted to their actual values. Pi
+			cameras with configured options also get a 'controls' entry.
+			The actual settings are logged.
+		"""
 			# Assemble the camera configurations
 		logger.debug(f'{camera_list=}')
 		logger.debug(f'{requested_options=}')
@@ -1099,41 +1239,49 @@ def configure_cameras(installed_cameras,camera_list,requested_options):
 		try:
 			# Option values as applied to each camera (after clamping), keyed by camera name.
 			applied_options = {}
+			# Cameras that could not be set up (e.g. busy in another process); removed below
+			# so the remaining cameras still start.
+			failed_cameras = set()
 			for name, details in camera_list.items():
 				if (details['source'] not in installed_cameras) and (details['cameratype'] != 'STREAM'):
 					logger.warning(f'Camera source {details['source']} is not installed')
 					continue
 
-				# Get and set camera options for USB and Pi cameras - No need for streams
-				if details['cameratype'] == 'USB':
-					camera_options = get_camera_options_usb(name,details['source'])
-					logger.debug(camera_options)
-					applied = set_controls_usb(camera_options,requested_options[name])
-					# With no options configured every control is set to its default; only report requested ones.
-					applied_options[name] = {
-						key: value
-						for key, value in applied[details['source']].items()
-						if key in requested_options[name]
-					}
+				try:
+					# Get and set camera options for USB and Pi cameras - No need for streams
+					if details['cameratype'] == 'USB':
+						camera_options = get_camera_options_usb(name,details['source'])
+						logger.debug(camera_options)
+						applied = set_controls_usb(camera_options,requested_options[name])
+						# With no options configured every control is set to its default; only report requested ones.
+						applied_options[name] = {
+							key: value
+							for key, value in applied[details['source']].items()
+							if key in requested_options[name]
+						}
 
-				elif details['cameratype'] == 'PICAMERA':
-					camera_options = get_camera_options_picam(name,details['source'])
-					logger.debug(f'{camera_options=}')
-					resolved = set_controls_picam(camera_options,requested_options[name])
-					applied_options[name] = {
-						PI_REAL_TO_CANONICAL[real_name]: value
-						for real_name, value in resolved[details['source']].items()
-					}
-					# Only carry controls when some are configured, so the camera dict
-					# otherwise matches the USB one; picam treats missing as {}.
-					if resolved[details['source']]:
-						camera_list[name]['controls'] = resolved[details['source']]
+					elif details['cameratype'] == 'PICAMERA':
+						camera_options = get_camera_options_picam(name,details['source'])
+						logger.debug(f'{camera_options=}')
+						resolved = set_controls_picam(camera_options,requested_options[name])
+						applied_options[name] = {
+							PI_REAL_TO_CANONICAL[real_name]: value
+							for real_name, value in resolved[details['source']].items()
+						}
+						# Only carry controls when some are configured, so the camera dict
+						# otherwise matches the USB one; picam treats missing as {}.
+						if resolved[details['source']]:
+							camera_list[name]['controls'] = resolved[details['source']]
 
-				elif details['cameratype'] == 'STREAM':
-					logger.debug(f'Skipping camera controls for stream {name}')
-	
-				else:
-					logger.warning(f'Unrecognized camera type {details['cameratype']}')
+					elif details['cameratype'] == 'STREAM':
+						logger.debug(f'Skipping camera controls for stream {name}')
+
+					else:
+						logger.warning(f'Unrecognized camera type {details['cameratype']}')
+						continue
+				except Exception as e:
+					logger.warning(f'[{name}] Could not set up camera {details['source']}; skipping it\nIs it being used by another process?.\nError reported was - {e}')
+					failed_cameras.add(name)
 					continue
 				'''
 				camera_list[name].update({
@@ -1143,20 +1291,28 @@ def configure_cameras(installed_cameras,camera_list,requested_options):
 				})
 				'''
 
-			# Remove any cameras that are not present
+			# Remove any cameras that are not present or could not be set up
 			for camera, details in list(camera_list.items()):
 				if (details['source'] not in installed_cameras) and (details['cameratype'] != 'STREAM'):
-					camera_list.pop(camera) 
+					camera_list.pop(camera)
+					logger.debug(f'Camera {camera} with source {details['source']} removed')
+					continue
+				if camera in failed_cameras:
+					camera_list.pop(camera)
 					logger.debug(f'Camera {camera} with source {details['source']} removed')
 					continue
 
 				# Validate this camera's format, resolution, and fps.
-				if details['cameratype'] == 'USB':
-					validated_camera = validate_usb_camera_configs({camera: details}, applied_options)
-					camera_list[camera] = validated_camera[camera]
-				elif details['cameratype'] == 'PICAMERA':
-					validated_camera = validate_pi_camera_configs({camera: details}, applied_options)
-					camera_list[camera] = validated_camera[camera]
+				try:
+					if details['cameratype'] == 'USB':
+						validated_camera = validate_usb_camera_configs({camera: details}, applied_options)
+						camera_list[camera] = validated_camera[camera]
+					elif details['cameratype'] == 'PICAMERA':
+						validated_camera = validate_pi_camera_configs({camera: details}, applied_options)
+						camera_list[camera] = validated_camera[camera]
+				except Exception as e:
+					logger.warning(f'[{camera}] Could not validate camera {details['source']}; skipping it - {e}')
+					camera_list.pop(camera)
 
 
 
@@ -1166,7 +1322,7 @@ def configure_cameras(installed_cameras,camera_list,requested_options):
 			for name, options in camera_list.items():
 				for option, value in options.items():
 					if option == 'name':
-						camera_results.append(f'{value}')
+						camera_results.append(f'\n{value}')
 					else:
 						if option != 'controls': # Dont want this displayed
 							camera_results.append(f'\t--{option} = {value}')
