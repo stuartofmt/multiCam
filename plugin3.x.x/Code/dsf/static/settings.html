@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Settings</title>
+
+    <link rel="stylesheet" href="/static/settings.css">
+</head>
+<body>
+
+    <div class="container">
+
+        <header class="page-header">
+            <h1>Camera Settings</h1>
+            <a class="nav-link" href="/">&larr; Camera Streams</a>
+        </header>
+
+        <p id="config-file" class="config-file"></p>
+
+        <div id="restart-banner" class="banner banner-warning" hidden>
+            The configuration file has been saved. Restart the multiCam plugin for the changes to take effect.
+            The Effective column still shows the values the cameras are running with.
+        </div>
+
+        <div id="messages" aria-live="polite"></div>
+
+        <div id="camera-list" class="camera-list"></div>
+
+        <div class="page-actions">
+            <button id="add-camera" type="button" class="button">+ Add camera</button>
+            <button id="save" type="button" class="button button-primary" disabled>Save</button>
+            <button id="discard" type="button" class="button" disabled>Discard changes</button>
+            <label class="log-level">
+                <span>Log level</span>
+                <select id="log-level">
+                    <option value="INFO">INFO</option>
+                    <option value="DEBUG">DEBUG</option>
+                </select>
+            </label>
+        </div>
+
+    </div>
+
+    <template id="camera-card-template">
+        <section class="camera-card">
+            <div class="card-header">
+                <label class="field">
+                    <span>Name</span>
+                    <input class="camera-name" type="text" required>
+                </label>
+                <label class="field">
+                    <span>Type</span>
+                    <select class="camera-type"></select>
+                </label>
+                <label class="field field-source">
+                    <span>Source</span>
+                    <input class="camera-source" type="text" required>
+                    <datalist></datalist>
+                </label>
+                <span class="status"></span>
+                <button type="button" class="button button-danger delete-camera">Delete camera</button>
+            </div>
+            <div class="table-wrap">
+                <table class="settings-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Setting</th>
+                            <th scope="col">Requested</th>
+                            <th scope="col">Min / Max / Default</th>
+                            <th scope="col">Effective</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+    </template>
+
+    <script src="/static/settings.js"></script>
+
+</body>
+</html>

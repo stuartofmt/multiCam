@@ -3,7 +3,7 @@ import time
 from typing import Optional
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, model_validator
 from starlette.requests import Request
@@ -13,9 +13,18 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from defaults import (
     STATIC_DIR,
     DefaultCameraSettings,
+    SETTING_LIMITS,
 )
 from multi_camera import MultiCameraManager
 import logger_module
+from settings_config import (
+    LOG_LEVELS,
+    read_camera_config,
+    read_log_level,
+    settings_schema,
+    validate_cameras,
+    write_camera_config,
+)
 
 
 # ============================================================
@@ -80,7 +89,7 @@ class NoCacheStaticMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
 
-        if request.url.path == "/" or request.url.path == "/index" or request.url.path.startswith("/static/"):
+        if request.url.path in ("/", "/index", "/settings") or request.url.path.startswith("/static/"):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
             response.headers["Pragma"] = "no-cache"
 
@@ -109,6 +118,24 @@ camera_urls = {}
 def start_cameras():
     manager.start()
 
+
+# Filled in by set_settings_state once the cameras are configured at startup.
+settings_state = {
+    "config_file": None,
+    # What each detected camera supports (see get_config.get_device_capabilities)
+    "capabilities": {"USB": {}, "PICAMERA": {}},
+    # Values each camera runs with (see get_config.get_effective_settings)
+    "effective": {},
+    # The config file was saved since startup, so the running cameras don't match it.
+    "restart_required": False,
+}
+
+
+def set_settings_state(config_file, capabilities, effective):
+    settings_state["config_file"] = config_file
+    settings_state["capabilities"] = capabilities
+    settings_state["effective"] = effective
+
 app.mount(
     "/static",
     StaticFiles(directory=str(STATIC_DIR)),
@@ -123,6 +150,75 @@ app.mount(
 @app.get("/index")
 async def root():
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/settings")
+async def settings_page():
+    return FileResponse(STATIC_DIR / "settings.html")
+
+
+@app.get("/api/settings")
+async def get_settings():
+    config_file = settings_state["config_file"]
+    if config_file is None:
+        return JSONResponse({"status": "error", "message": "Settings are not available yet"}, status_code=503)
+    try:
+        cameras = read_camera_config(config_file)
+        log_level = read_log_level(config_file)
+    except Exception as e:
+        return JSONResponse({"status": "error", "message": f"Could not read {config_file}: {e}"}, status_code=500)
+    return {
+        "status": "success",
+        "config_file": str(config_file),
+        "cameras": cameras,
+        "log_level": log_level,
+        "capabilities": settings_state["capabilities"],
+        # Only cameras that were added and are running have effective values.
+        "effective": {
+            name: values for name, values in settings_state["effective"].items()
+            if name in manager.cameras
+        },
+        "schema": settings_schema(),
+        "setting_limits": SETTING_LIMITS,
+        "restart_required": settings_state["restart_required"],
+    }
+
+
+class SettingsCamera(BaseModel):
+    name: str
+    cameratype: str
+    source: str
+    values: dict[str, str | int | float | None] = {}
+
+
+class SettingsRequest(BaseModel):
+    cameras: list[SettingsCamera]
+    # None leaves [LOGGING] unchanged.
+    log_level: Optional[str] = None
+
+
+@app.post("/api/settings")
+async def save_settings(request: SettingsRequest):
+    config_file = settings_state["config_file"]
+    if config_file is None:
+        return JSONResponse({"status": "error", "message": "Settings are not available yet"}, status_code=503)
+
+    cameras, errors = validate_cameras([camera.model_dump() for camera in request.cameras])
+    log_level = request.log_level.upper() if request.log_level else None
+    if log_level is not None and log_level not in LOG_LEVELS:
+        errors.append(f"Log level must be one of {', '.join(LOG_LEVELS)}")
+    if errors:
+        return JSONResponse({"status": "error", "errors": errors}, status_code=400)
+
+    try:
+        write_camera_config(config_file, cameras, log_level)
+    except Exception as e:
+        logger_module.logger.error(f"Could not save {config_file}: {e}")
+        return JSONResponse({"status": "error", "message": f"Could not save {config_file}: {e}"}, status_code=500)
+
+    settings_state["restart_required"] = True
+    logger_module.logger.info(f"Camera settings saved to {config_file}")
+    return {"status": "success"}
 
 
 @app.get("/api/cameras")

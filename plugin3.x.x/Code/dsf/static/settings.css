@@ -1,0 +1,261 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: #111;
+    color: #fff;
+    font-family: Arial, sans-serif;
+}
+
+.container {
+    padding: 20px;
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.page-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.nav-link,
+.nav-link:visited {
+    color: #fff;
+}
+
+.config-file {
+    color: #999;
+    font-size: 0.85rem;
+    margin-bottom: 16px;
+    overflow-wrap: anywhere;
+}
+
+/* ---------- Banners ---------- */
+
+.banner {
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    line-height: 1.4;
+}
+
+.banner ul {
+    padding-left: 20px;
+}
+
+.banner-warning {
+    background: #3a2f10;
+    border: 1px solid #a8841f;
+}
+
+.banner-error {
+    background: #3a1414;
+    border: 1px solid #b33a3a;
+}
+
+.banner-success {
+    background: #143a1c;
+    border: 1px solid #3a9a4f;
+}
+
+/* ---------- Camera cards ---------- */
+
+.camera-list {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.camera-card {
+    background: #1e1e1e;
+    border-radius: 12px;
+    padding: 12px;
+}
+
+.card-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.8rem;
+    color: #bbb;
+}
+
+.field-source {
+    flex: 1 1 220px;
+}
+
+input,
+select {
+    background: #111;
+    color: #fff;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 6px 8px;
+    font: inherit;
+    font-size: 0.95rem;
+}
+
+input:focus,
+select:focus {
+    outline: 2px solid #4a8fe0;
+    outline-offset: 0;
+}
+
+.camera-name {
+    font-weight: bold;
+}
+
+.status {
+    font-size: 0.8rem;
+    padding: 4px 10px;
+    border-radius: 999px;
+    align-self: center;
+    margin-top: 16px;
+}
+
+.status-running {
+    background: #143a1c;
+    color: #7ddc91;
+}
+
+.status-stopped {
+    background: #3a1414;
+    color: #f08a8a;
+}
+
+.status-new {
+    background: #3a2f10;
+    color: #e8c35c;
+}
+
+/* ---------- Settings table ---------- */
+
+.table-wrap {
+    overflow-x: auto;
+}
+
+.settings-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.settings-table th,
+.settings-table td {
+    padding: 5px 8px;
+    text-align: left;
+    border-bottom: 1px solid #2c2c2c;
+    white-space: nowrap;
+}
+
+.settings-table thead th {
+    color: #bbb;
+    font-weight: normal;
+    border-bottom: 1px solid #444;
+}
+
+.settings-table tbody th {
+    font-weight: normal;
+}
+
+.settings-table tr.group th {
+    color: #8fb8ea;
+    font-weight: bold;
+    padding-top: 12px;
+}
+
+.settings-table .requested {
+    width: 100%;
+    min-width: 140px;
+}
+
+.settings-table tr.readonly th,
+.muted {
+    color: #888;
+}
+
+.adjusted {
+    color: #e8c35c;
+    font-weight: bold;
+}
+
+/* ---------- Buttons ---------- */
+
+.button {
+    background: #2c2c2c;
+    color: #fff;
+    border: 1px solid #555;
+    border-radius: 6px;
+    padding: 7px 14px;
+    font: inherit;
+    cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+    background: #3a3a3a;
+}
+
+.button:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.button-primary {
+    background: #1f5fae;
+    border-color: #2f74c8;
+}
+
+.button-primary:hover:not(:disabled) {
+    background: #2a6fc4;
+}
+
+.button-danger {
+    margin-left: auto;
+    border-color: #8a2e2e;
+    color: #f08a8a;
+}
+
+.button-danger:hover:not(:disabled) {
+    background: #3a1414;
+}
+
+.page-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.log-level {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    color: #bbb;
+}
+
+.empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 120px;
+    color: #ccc;
+    font-size: 1.1rem;
+    text-align: center;
+}

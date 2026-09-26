@@ -9,8 +9,12 @@ import glob
 import copy
 from typing import Dict, List, Optional, Tuple
 
-from defaults import DefaultCameraSettings, DefaultNetworkCameraSettings, AllowedOptions, NETWORK_TYPES
+from defaults import (
+	DefaultCameraSettings, DefaultNetworkCameraSettings, AllowedOptions, NETWORK_TYPES,
+	URL_NAME_SETTINGS, URL_NAME_RE,
+)
 from logger_module import logger
+from multi_camera import normalize_rotation
 
 # --- CSI cameras via picamera2 ---
 from picamera2 import Picamera2
@@ -842,11 +846,6 @@ def validate_pi_camera_configs(cameras: Dict[str, dict], applied_options: Option
 
 
 
-URL_NAME_SETTINGS = ('streamname', 'snapshotname')
-# URL-safe path segment: RFC 3986 unreserved characters, excluding '.' so "." and ".." can't be used.
-URL_NAME_RE = re.compile(r'[A-Za-z0-9_~-]+')
-
-
 def get_config_from_file(config, name, source, cameratype):
 	"""
 	Build the default settings dictionaries for a single camera.
@@ -1333,3 +1332,135 @@ def configure_cameras(installed_cameras,camera_list,requested_options):
 		except Exception as e:
 			logger.exception('Camera option setup failed')
 			raise Exception(f'Error setting camera options {e}') from e
+
+
+# ----------------------------------
+#  SETTINGS PAGE SNAPSHOT
+# ----------------------------------
+
+def _jsonable_bounds(bounds):
+	"""Picamera2 reports some controls (e.g. AwbEnable) as bool; show those as 0/1."""
+	return {
+		key: int(value) if isinstance(value, bool) else value
+		for key, value in bounds.items()
+	}
+
+
+def _usb_setting_bounds(source):
+	"""min/max of fps, width and height for the format the camera will stream in."""
+	output = _run_v4l2_ctl(source)
+	formats = _parse_formats(output) if output else {}
+	if not formats:
+		return {}
+	chosen_format = next(
+		(fmt for fmt in FORMAT_FALLBACK_SEQUENCE if fmt in formats),
+		next(iter(formats)),
+	)
+	resolutions = formats[chosen_format]
+	if not resolutions:
+		return {}
+	all_fps = [fps for fps_list in resolutions.values() for fps in fps_list]
+	bounds = {
+		"width": {"min": min(w for w, _ in resolutions), "max": max(w for w, _ in resolutions)},
+		"height": {"min": min(h for _, h in resolutions), "max": max(h for _, h in resolutions)},
+	}
+	if all_fps:
+		bounds["fps"] = {"min": min(all_fps), "max": max(all_fps)}
+	return bounds
+
+
+def _picam_setting_bounds(modes):
+	"""The ISP scales to any size up to the largest sensor mode, at up to the fastest mode's fps."""
+	if not modes:
+		return {}
+	return {
+		"width": {"min": None, "max": max(w for w, _ in modes)},
+		"height": {"min": None, "max": max(h for _, h in modes)},
+		"fps": {"min": None, "max": max(modes.values())},
+	}
+
+
+def get_device_capabilities(installed_cameras):
+	"""
+	Report what each detected camera supports, for the settings page.
+
+	Uses the options already cached by get_installed_cameras, so no camera
+	is reset or reopened. Cameras whose options could not be read (e.g.
+	busy in another process) have options None.
+
+	Returns:
+		{
+			"USB": {source: {"options": {name: {min, max, default}} | None,
+			                 "settings": {name: {min, max}}}},
+			"PICAMERA": {"<config index>": {...same...}},
+		}
+		PICAMERA entries are keyed by the index used in [PICAMERAS].
+	"""
+	capabilities = {"USB": {}, "PICAMERA": {}}
+
+	for source in installed_cameras:
+		if not isinstance(source, str):
+			continue
+		cached = _USB_OPTIONS_CACHE.get(source)
+		try:
+			settings = _usb_setting_bounds(source)
+		except Exception as e:
+			logger.debug(f"Could not read formats for {source}: {e}")
+			settings = {}
+		capabilities["USB"][source] = {
+			"options": (
+				{name: _jsonable_bounds(bounds) for name, bounds in cached[source].items()}
+				if cached else None
+			),
+			"settings": settings,
+		}
+
+	try:
+		pi_camera_indices = get_pi_camera_indices()
+	except Exception as e:
+		logger.debug(f"Could not list Pi cameras: {e}")
+		pi_camera_indices = []
+	for index, slot in enumerate(pi_camera_indices):
+		info = _PICAM_INFO_CACHE.get(slot)
+		capabilities["PICAMERA"][str(index)] = {
+			"options": (
+				{name: _jsonable_bounds(bounds) for name, bounds in info["controls"].items()}
+				if info else None
+			),
+			"settings": _picam_setting_bounds(info["modes"]) if info else {},
+		}
+
+	return capabilities
+
+
+def get_effective_settings(configured_cameras):
+	"""
+	Report the values each camera actually runs with, for the settings page.
+
+	Args:
+		configured_cameras: as returned by configure_cameras.
+
+	Returns:
+		{camera name: {setting or option: value}}. Controls that were not
+		configured are at the camera's default, so that is reported for them.
+	"""
+	effective = {}
+	for name, cam in configured_cameras.items():
+		values = {
+			key: value for key, value in cam.items()
+			if key not in ("name", "source", "cameratype", "controls")
+		}
+		if "rotate" in values:
+			values["rotate"] = normalize_rotation(values["rotate"])
+
+		if cam["cameratype"] == "USB":
+			cached = _USB_OPTIONS_CACHE.get(cam["source"], {}).get(cam["source"], {})
+		elif cam["cameratype"] == "PICAMERA":
+			cached = _PICAM_INFO_CACHE.get(cam["source"], {}).get("controls", {})
+		else:
+			cached = {}
+		for option, bounds in cached.items():
+			values.setdefault(option, bounds["default"])
+
+		effective[name] = _jsonable_bounds(values)
+	return effective

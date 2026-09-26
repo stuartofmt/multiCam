@@ -14,8 +14,17 @@ body {
     padding: 20px;
 }
 
-h1 {
+.page-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
     margin-bottom: 20px;
+}
+
+.nav-link,
+.nav-link:visited {
+    color: #fff;
 }
 
 .camera-grid {

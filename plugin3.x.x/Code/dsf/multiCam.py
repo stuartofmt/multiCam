@@ -22,7 +22,7 @@ import uvicorn
 import socket
 import signal
 
-from routes import app, start_cameras
+from routes import app, start_cameras, set_settings_state
 
 from logger_module import (setup_log, set_log_level)
 
@@ -90,7 +90,8 @@ if __name__ == "__main__":
 	logger.info(f'''Log file for {progName} -- {progVersion}''')
 
 	
-	from get_config import parse_config, get_installed_cameras, configure_cameras
+	from get_config import (parse_config, get_installed_cameras, configure_cameras,
+						get_device_capabilities, get_effective_settings)
 
 	try:
 		# Get info from config file
@@ -110,6 +111,13 @@ if __name__ == "__main__":
 	except Exception as e:
 		logger.info(f'{e}')
 		force_quit(1)
+
+	# Values shown on the settings page
+	try:
+		set_settings_state(CONFIGFILENAME, get_device_capabilities(installed_cameras), get_effective_settings(configured_cameras))
+	except Exception as e:
+		logger.warning(f'Settings page will not show camera capabilities - {e}')
+		set_settings_state(CONFIGFILENAME, {"USB": {}, "PICAMERA": {}}, {})
 
 	this_ip_address = getIP(PORT)
 
