@@ -17,6 +17,10 @@ It has been programmed with efficiency in mind:
 
 ![Camera streams](images/index.png)
 
+## Installation
+
+The plugin is installed using DWC in the normal manner.  **Note that there are multiple libraries that need to be install so please be patient - it could take several minutes**
+
 ## Configuration
 
 Configuration is in two parts:
