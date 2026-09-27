@@ -18,7 +18,7 @@ body {
 
 .page-header {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 10px;
@@ -27,7 +27,18 @@ body {
 
 .nav-link,
 .nav-link:visited {
+    display: inline-block;
+    background: #2c2c2c;
     color: #fff;
+    border: 1px solid #555;
+    border-radius: 6px;
+    padding: 7px 14px;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.nav-link:hover {
+    background: #3a3a3a;
 }
 
 .config-file {
