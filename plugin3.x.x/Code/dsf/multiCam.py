@@ -26,6 +26,26 @@ from routes import app, start_cameras, set_settings_state
 
 from logger_module import (setup_log, set_log_level)
 
+DEFAULT_SETTINGS = """# --------------------------------------------------
+# Camera parameters for multiCam
+# ---------------------------------------------------
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# DO NOT EDIT BELOW THIS LINE
+# USE THE CONFIGURATION PAGE AT http://<IP>:<PORT>/Settings
+# TO MANAGE CAMERAS
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+[USBCAMERAS]
+
+[PICAMERAS]
+
+[STREAMS]
+
+[LOGGING]
+loglevel = INFO
+"""
+
 def validate_port(port):
 	#  Get the IP and check if Port are available for use
 	this_ip_address = ''
@@ -83,6 +103,9 @@ if __name__ == "__main__":
 	LOGFILENAME = CONFIGFILENAME.parent / "multiCam.log"
 	SETTINGSFILENAME = Path(__file__).parent / 'settings.config'
 	print (f'{SETTINGSFILENAME=}')
+	if not SETTINGSFILENAME.exists():
+		SETTINGSFILENAME.write_text(DEFAULT_SETTINGS)
+		print(f'Created default settings file {SETTINGSFILENAME}')
 
 
 	if not setup_log(progName,LOGFILENAME):
