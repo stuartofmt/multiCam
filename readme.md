@@ -15,69 +15,87 @@ It has been programmed with efficiency in mind:
 - hardware acceleration is used where available (e.g., 180° rotation on Pi cameras costs no CPU)
 - control values are validated and clamped to device limits rather than attempting invalid settings that would fail
 
-To assist in the identification / selection of cameras:  If there are no cameras configured - When the plugin starts, it logs:
-
-- the cameras it found on the system, with the minimum, maximum and default values of each control;
-
-In normal operation it logs the above and additionally:
-
-- the settings requested in the configuration file;
-- the settings actually applied, after any adjustment (because some may not be supported by the camera or the values are outside the supported bounds).
+![Camera streams](images/index.png)
 
 ## Configuration
 
-**Note that the settings shown below are examples**
+Configuration is in two parts:
 
-The plugin reads its settings from:
+- the **port** the web interface runs on, set in a small configuration file;
+- everything else (cameras, their settings and the log level), managed from
+  the [settings page](#settings-page).
+
+### Port
+
+The port is read from:
 
 `sys/multiCam/multiCam.config`
 
-Use `multiCam.config.example` as a starting point.
+Use `multiCam.config.example` as a starting point. The file contains a single
+line, `port = <number>`. The port is required, must be between 1024 and 65535,
+and must not conflict with DWC or other plugins or applications.
 
-Set the port in `[UI]`. It is required:
+Restart the plugin after changing the port.
 
-```ini
-[UI]
-port=8044
-```
+### Settings page
+
+Open `http://<SBC-IP>:<port>/settings`, or follow the link from the camera
+streams page.
+
+![Settings page](images/settings.png)
+
+From the settings page you can:
+
+- **Add** and **delete** cameras.
+- Set each camera's **name**, **type** (USB, PICAMERA or STREAM) and
+  **source**.
+  - For USB and PICAMERA cameras, the source is chosen from a list of the
+    cameras detected on the system. The list also shows the current source,
+    and which sources are already used by another camera.
+  - For STREAM cameras, enter the stream URL.
+- Set each camera's [settings and options](#cameras). For each one the page
+  shows:
+  - **Requested**: the value you set. Leave it blank to use the default.
+  - **Min / Max / Default**: the limits and default the camera reports.
+  - **Effective**: the value the running camera is actually using, after any
+    adjustment by the plugin.
+- Set the **log level**.
+
+Press **Save** to write the changes, or **Discard changes** to go back to the
+saved values. Saved changes take effect when the plugin is restarted; until
+then a banner is shown, and the Effective column still shows the values the
+cameras are running with.
 
 ## Logging
 
-Set the logging level in `[LOGGING]`:
+The log level can be `INFO` (the default) or `DEBUG`. The log is written to
+`sys/multiCam/multiCam.log`.
 
-```ini
-[LOGGING]
-loglevel=DEBUG
-```
+To help identify and choose cameras, the plugin logs at startup:
 
-Supported levels are `WARNING`, `INFO` and `DEBUG`. The default is `INFO`. The
-log is written to `sys/multiCam/multiCam.log`.
+- the cameras it found on the system, with the minimum, maximum and default
+  values of each control;
+- the settings requested for each configured camera;
+- the settings actually applied, after any adjustment (because some may not be
+  supported by the camera or the values are outside the supported bounds).
 
 ## Cameras
 
-Cameras are listed in three sections: `[USBCAMERAS]`, `[PICAMERAS]` and
-`[STREAMS]`. At least one camera in one of these sections must be configured.
+There are three camera types: USB, PICAMERA and STREAM.
 
-Each entry has the form `name=source`. Do not put quotes around values. Camera
-names are used in the web URLs and must be unique across all three sections.
+Camera names are used in the web URLs and must be unique.
 
-To change a camera's settings, add a section with the same name as the camera.
-Settings you leave out use the defaults. All values must be numeric, except
-`streamname` and `snapshotname`. Unknown keys are ignored.
+Each camera has **settings** (resolution, frame rate, rotation etc.) and, for
+USB and PICAMERA, **options** (camera controls such as brightness and
+contrast). Any you leave blank use the defaults. All values must be numeric,
+except `streamname` and `snapshotname`.
 
 ## USB
 
-USB cameras are listed under `[USBCAMERAS]`. The source must be a device
-of the form `/dev/videoN`:
-
-```ini
-[USBCAMERAS]
-Front=/dev/video0
-Rear=/dev/video2
-```
+The source of a USB camera is a device of the form `/dev/videoN`.
 
 Many USB cameras create more than one `/dev/video` node. Only nodes that
-support video capture are listed in the startup log; use one of those.
+support video capture are offered on the settings page.
 
 ### USB options
 
@@ -100,7 +118,7 @@ installed (the plugin does this).
   maximum.
 - Options the camera does not support are skipped.
 - Ranges vary between cameras. For example, brightness may be `-64..64` on one
-  camera and `0..255` on another. Check the startup log for your camera's ranges.
+  camera and `0..255` on another. The settings page shows your camera's ranges.
 - `balance` and `autofocus` switch the automatic mode on (1) or off (0).
 - `autoexposure` uses the driver's menu values. On many UVC cameras, 1 is
   manual and 3 is automatic (aperture priority).
@@ -154,31 +172,14 @@ unchanged. This uses very little CPU, and `jpegresolution` has no effect.
 Setting any rotation means every frame is decoded, rotated and re-encoded at
 `jpegresolution`.
 
-### USB example
-
-```ini
-[Front]
-width=1280
-height=720
-fps=30
-brightness=10
-contrast=40
-autofocus=1
-```
-
 ## PICAMERA
 
-Raspberry Pi cameras (CSI ribbon cable) are listed under `[PICAMERAS]` and use
-Picamera2/libcamera. The source is a zero-based Pi-camera index:
-
-```ini
-[PICAMERAS]
-Picamera=0
-```
+Raspberry Pi cameras (CSI ribbon cable) use Picamera2/libcamera. The source is
+a zero-based Pi-camera index.
 
 The index counts only Pi cameras; USB cameras are not included in the count.
-For example, `Picamera=0` selects the first Pi camera even if the system
-reports a USB camera first.
+For example, source `0` selects the first Pi camera even if the system reports
+a USB camera first.
 
 ### PICAMERA options
 
@@ -203,7 +204,7 @@ Options are passed to libcamera when the camera starts.
   - `contrast`, `saturation` and `sharpness`: 0 upward (default 1).
   - `balance` and `autoexposure`: 1 is on, 0 is off.
   - `autofocus`: 0 is manual, 1 is auto (single), 2 is continuous.
-- Check the startup log for the exact ranges your camera reports.
+- The settings page shows the exact ranges your camera reports.
 
 ### PICAMERA settings
 
@@ -233,28 +234,11 @@ Frames are always captured as RGB and encoded to JPEG at `jpegresolution`.
 A rotation of 180 is done by the camera hardware and costs no CPU. Rotations of
 90 and 270 are done in software.
 
-### PICAMERA example
-
-```ini
-[Picamera]
-width=1920
-height=1080
-fps=30
-rotate=180
-brightness=0.1
-autofocus=2
-```
-
 ## STREAM
 
-Network cameras are listed under `[STREAMS]`. The source must start with
-`http://`, `https://` or `rtsp://`. Entries with any other prefix are ignored.
-
-```ini
-[STREAMS]
-Workshop=http://192.168.30.31:8081
-Garage=rtsp://192.168.30.32:554/stream1
-```
+The source of a network camera is a URL starting with `http://`, `https://` or
+`rtsp://`, for example `http://192.168.30.31:8081` or
+`rtsp://192.168.30.32:554/stream1`.
 
 Streams use OpenCV's automatic backend selection, usually FFmpeg.
 
@@ -273,7 +257,7 @@ Streams use OpenCV's automatic backend selection, usually FFmpeg.
 | `snapshotname`   | snapshot | Name of the snapshot URL. See [User Interface](#user-interface). |
 
 A stream is passed through as the source delivers it. `width` and `height`
-are ignored; the source's resolution is used.
+are not used; the source's resolution is used.
 
 `fps` is an upper limit. It does not change the rate the source sends:
 
@@ -289,19 +273,11 @@ frames are sent unchanged, and `jpegresolution` has no effect. RTSP streams,
 non-MJPEG sources and rotated streams are decoded and re-encoded at
 `jpegresolution`.
 
-### STREAM example
-
-```ini
-[Workshop]
-fps=30
-rotate=90
-jpegresolution=80
-```
-
 ## User Interface
 
-Open `http://<SBC-IP>:<port>/` to view the configured cameras. Each camera also
-has these endpoints, where `<camera-name>` is URL-encoded when necessary:
+Open `http://<SBC-IP>:<port>/` to view the configured cameras, and
+`http://<SBC-IP>:<port>/settings` to change them. Each camera also has these
+endpoints, where `<camera-name>` is URL-encoded when necessary:
 
 ```text
 http://<SBC-IP>:<port>/<camera-name>/<streamname>
@@ -309,13 +285,7 @@ http://<SBC-IP>:<port>/<camera-name>/<snapshotname>
 ```
 
 `<streamname>` and `<snapshotname>` default to `stream` and `snapshot`, and
-can be changed in the camera's section:
-
-```ini
-[Front]
-streamname=video
-snapshotname=still
-```
+can be changed for each camera on the settings page.
 
 The names may only contain letters, digits, `-`, `_` and `~`, and must be
 different from each other. An invalid name is replaced by its default, with a

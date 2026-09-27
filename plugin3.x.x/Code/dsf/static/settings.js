@@ -213,6 +213,7 @@ function renderCard(camera) {
     nameInput.addEventListener("input", () => {
         camera.name = nameInput.value;
         setDirty(true);
+        refreshAllSourceOptions();
     });
 
     const typeSelect = card.querySelector(".camera-type");
@@ -227,7 +228,7 @@ function renderCard(camera) {
             sourceInput.value = camera.source;
         }
         setDirty(true);
-        renderSourceOptions(card, camera);
+        refreshAllSourceOptions();
         renderTable(card, camera);
     });
 
@@ -242,6 +243,15 @@ function renderCard(camera) {
         renderTable(card, camera);
     });
 
+    const sourceSelect = card.querySelector(".camera-source-select");
+    sourceSelect.addEventListener("change", () => {
+        camera.source = sourceSelect.value;
+        sourceInput.value = camera.source;
+        setDirty(true);
+        refreshAllSourceOptions();
+        renderTable(card, camera);
+    });
+
     card.querySelector(".delete-camera").addEventListener("click", () => {
         const label = camera.name.trim() || "this camera";
         if (!confirm(`Delete camera "${label}"?\n\nThe change is written to the configuration file when you press Save.`)) {
@@ -250,6 +260,7 @@ function renderCard(camera) {
         cameras = cameras.filter((c) => c !== camera);
         card.remove();
         setDirty(true);
+        refreshAllSourceOptions();
         if (cameras.length === 0) {
             renderEmptyState();
         }
@@ -279,13 +290,54 @@ function unusedSource(cameratype, except) {
     return detectedSources(cameratype).find((source) => !used.has(source)) || "";
 }
 
-function renderSourceOptions(card, camera) {
-    const datalist = card.querySelector("datalist");
-    datalist.innerHTML = "";
-    for (const source of detectedSources(camera.cameratype)) {
-        datalist.appendChild(new Option(source, source));
+// Other cards' dropdowns show which sources are taken, so refresh them all.
+function refreshAllSourceOptions() {
+    for (const camera of cameras) {
+        const card = cameraList.querySelector(`.camera-card[data-id="${camera.id}"]`);
+        if (card) {
+            renderSourceOptions(card, camera);
+        }
     }
-    card.querySelector(".camera-source").placeholder = TYPE_HINTS[camera.cameratype] || "";
+}
+
+// USB and Pi cameras pick from the detected sources; streams take a free-text URL.
+function renderSourceOptions(card, camera) {
+    const sourceInput = card.querySelector(".camera-source");
+    const sourceSelect = card.querySelector(".camera-source-select");
+    const datalist = card.querySelector("datalist");
+    const detected = detectedSources(camera.cameratype);
+    const useSelect = camera.cameratype === "USB" || camera.cameratype === "PICAMERA";
+
+    sourceSelect.hidden = !useSelect;
+    sourceInput.hidden = useSelect;
+
+    datalist.innerHTML = "";
+    sourceSelect.innerHTML = "";
+    if (!useSelect) {
+        for (const source of detected) {
+            datalist.appendChild(new Option(source, source));
+        }
+        sourceInput.placeholder = TYPE_HINTS[camera.cameratype] || "";
+        return;
+    }
+
+    const current = camera.source.trim();
+    if (current === "") {
+        sourceSelect.add(new Option("-- select source --", ""));
+    } else if (!detected.includes(current)) {
+        sourceSelect.add(new Option(`${current} (not detected)`, current));
+    }
+    for (const source of detected) {
+        const usedBy = cameras.find(
+            (c) => c !== camera && c.cameratype === camera.cameratype && c.source.trim() === source
+        );
+        const label = usedBy ? `${source} (used by ${usedBy.name.trim() || "another camera"})` : source;
+        sourceSelect.add(new Option(label, source));
+    }
+    if (detected.length === 0 && current === "") {
+        sourceSelect.options[0].textContent = "-- no cameras detected --";
+    }
+    sourceSelect.value = current;
 }
 
 function renderStatus(card, camera, effective) {
@@ -502,6 +554,7 @@ document.getElementById("add-camera").addEventListener("click", () => {
     const card = renderCard(camera);
     cameraList.appendChild(card);
     setDirty(true);
+    refreshAllSourceOptions();
     card.scrollIntoView({ behavior: "smooth", block: "start" });
     card.querySelector(".camera-name").focus({ preventScroll: true });
 });

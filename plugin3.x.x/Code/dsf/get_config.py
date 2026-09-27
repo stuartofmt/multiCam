@@ -1091,16 +1091,61 @@ def resolve_pi_camera_index(camera_number):
 		) from e
 
 
-def parse_config(config_file,logger):
+def get_port(config_file):
 	"""
 	Read and validate the config file.
 
-	Checks the UI port and LOGGING level, and builds settings for each
+	The file has no sections, just a "port = <number>" line.
+	Blank lines and lines starting with # or ; are ignored.
+
+	Returns:
+		PORT
+
+	Raises:
+		Exception('Config Issue') if the file is invalid.
+	"""
+	if not os.path.exists(config_file):
+		raise Exception(f"No Config file found at: {config_file}" )
+
+	else:
+		logger.debug(f"Parsing {config_file}")
+		try:
+			port_value = None
+			with open(config_file) as f:
+				for line in f:
+					line = line.strip()
+					if not line or line.startswith(('#', ';')):
+						continue
+					key, sep, value = line.partition('=')
+					if sep and key.strip().lower() == 'port':
+						port_value = value.strip()
+
+			if port_value is None:
+				raise ValueError('Config file must have a PORT specified e.g. port = 8001')
+
+			PORT = int(port_value)
+			if PORT < 1024 or PORT > 65535:
+				raise ValueError('UI PORT must be between 1024 and 65535')
+
+			return PORT
+		
+		except Exception as e:
+			logger.critical(f'Error parsing config file {config_file}')
+			logger.critical(f'{e}')
+			raise Exception('Config Issue')
+
+
+
+def parse_config(config_file,logger):
+	"""
+	Read and validate the camera and settings file.
+
+	Checks LOGGING level, and builds settings for each
 	camera listed under USBCAMERAS, PICAMERAS and STREAMS. The requested
 	settings are logged.
 
 	Returns:
-		(PORT, LOGLEVEL, CAMERAS, CAMERA_CONFIG), where CAMERAS maps camera
+		(LOGLEVEL, CAMERAS, CAMERA_CONFIG), where CAMERAS maps camera
 		name to its settings and CAMERA_CONFIG maps camera name to its
 		AllowedOptions from the file. Returns False if the file does not exist.
 
@@ -1108,8 +1153,7 @@ def parse_config(config_file,logger):
 		Exception('Config Issue') if the file is invalid.
 	"""
 	if not os.path.exists(config_file):
-		logger.debug(f"No Config file:  {config_file}")
-		return False
+		raise Exception(f"No Settings file:  {config_file}")
 	else:
 		logger.debug(f"Parsing {config_file}")
 		try:
@@ -1121,65 +1165,55 @@ def parse_config(config_file,logger):
 			# Source - https://stackoverflow.com/a/28990982
 			config_dict = {s:dict(config.items(s)) for s in config.sections()}
 
-			# Get the various sections
-			ui_section = config_dict["UI"]
-			logging_section = config_dict["LOGGING"]
+			try:
+				# Get lOGGING SETTINGS
+				if "LOGGING" in config_dict:
+					logging_section = config_dict["LOGGING"]
+					#Change the keys to lower for UI and UPPER for LOGGING, but not for USBCAMERAS or PICAMERAS
+					config_dict_logging = {k.upper():v for k,v in logging_section.items()}
 
-			#Change the keys to lower for UI and UPPER for LOGGING, but not for USBCAMERAS or PICAMERAS
-			config_dict_ui = {k.lower():v for k,v in ui_section.items()}
-			config_dict_logging = {k.upper():v for k,v in logging_section.items()}
-
-			#Convert UI and LOGGING to dot dict
-			#UI = DictToClass(config_dict_ui)
-			#LOGGING = DictToClass(config_dict_logging)
-
-			# Adjust types and values
-			# UI
-			if 'port' not in config_dict_ui:
-				raise ValueError('UI section must have a PORT specified')
-
-			PORT = int(config_dict_ui['port'])
-			if PORT < 1024 or PORT > 65535:
-				raise ValueError('UI PORT must be between 1024 and 65535')
-
-			# LOGGING
-			LOGLEVEL = config_dict_logging.get('LOGLEVEL', 'INFO')
-			if LOGLEVEL not in ['DEBUG','INFO','WARNING']:
-				raise ValueError('LOGGING LEVEL must be one of DEBUG, INFO, WARNING')
+					# LOGGING
+					LOGLEVEL = config_dict_logging.get('LOGLEVEL', 'INFO')
+					if LOGLEVEL not in ['DEBUG','INFO']:
+						LOGLEVEL = 'INFO'
+				else:
+					LOGLEVEL = 'INFO'
+			except Exception as e:
+				raise Exception(f'Error trying to get LOGGING information')
 
 			# Process all Camera settings
 
 			CAMERAS = {}
 			CAMERA_CONFIG = {}
 
-			for name, source in config['USBCAMERAS'].items():
+			for name, source in config_dict.get('USBCAMERAS', {}).items():
 				if source.startswith('/dev/video'):
 					CAMERAS[name], CAMERA_CONFIG[name] = get_config_from_file(config, name, source,"USB")
 
-			for name, source in config['PICAMERAS'].items():
+			for name, source in config_dict.get('PICAMERAS', {}).items():
 				try:
 					camera_number = int(source)
 				except ValueError:
 					raise ValueError(f'PICAMERAS entry {name} must be an integer camera index')
 				source = resolve_pi_camera_index(camera_number)
 				CAMERAS[name], CAMERA_CONFIG[name] = get_config_from_file(config, name, source,"PICAMERA")
-			# Check USBCAMERAS and PICAMERAS are not both empty
 
-			for name, source in config['STREAMS'].items():
+			for name, source in config_dict.get('STREAMS', {}).items():
 				if any(
                     source.startswith(network_type)
                     for network_type in NETWORK_TYPES
                 ):
 					CAMERAS[name], CAMERA_CONFIG[name] = get_config_from_file(config, name, source,"STREAM")
-
+			'''
 			if CAMERAS == {}:
 				get_installed_cameras()
 				raise ValueError('At least one camera must be specified in [USBCAMERAS] or [PICAMERAS] or [STREAM]')		
+			'''
 
 			# All tests passed - log effective configuration
 			camera_results = []
 			
-			camera_results.append("Requested Settings from Configuration File")
+			camera_results.append("Requested Settings")
 			for name, options in CAMERAS.items():
 				for option, value in options.items():
 					if option == 'name':
@@ -1193,12 +1227,12 @@ def parse_config(config_file,logger):
 					camera_results.append(f'\tNo additional settings')
 			highlight_print(camera_results)
 
-			return PORT,LOGLEVEL,CAMERAS, CAMERA_CONFIG
+			return LOGLEVEL,CAMERAS, CAMERA_CONFIG
 		
 		except Exception as e:
-			logger.critical(f'Error parsing config file {config_file}')
+			logger.critical(f'Error parsing settings file {config_file}')
 			logger.critical(f'{e}')
-			raise Exception('Config Issue')
+			raise Exception('Settings Issue')
 
 def get_installed_cameras():
 	"""
@@ -1232,9 +1266,6 @@ def configure_cameras(installed_cameras,camera_list,requested_options):
 			The actual settings are logged.
 		"""
 			# Assemble the camera configurations
-		logger.debug(f'{camera_list=}')
-		logger.debug(f'{requested_options=}')
-		logger.debug(f'{installed_cameras=}')
 		try:
 			# Option values as applied to each camera (after clamping), keyed by camera name.
 			applied_options = {}

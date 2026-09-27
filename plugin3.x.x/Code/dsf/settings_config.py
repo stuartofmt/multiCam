@@ -32,7 +32,7 @@ CAMERA_LIST_SECTIONS = {
 RESERVED_SECTIONS = {"UI", "LOGGING", *CAMERA_LIST_SECTIONS.values()}
 
 # Log levels parse_config accepts; the settings page offers INFO and DEBUG.
-LOG_LEVELS = ("INFO", "DEBUG", "WARNING")
+LOG_LEVELS = ("INFO", "DEBUG")
 DEFAULT_LOG_LEVEL = "INFO"
 
 SECTION_RE = re.compile(r"^\s*\[([^\]]+)\]\s*$")
@@ -103,12 +103,13 @@ def read_camera_config(config_file):
 
 
 def read_log_level(config_file):
-    """Return the [LOGGING] loglevel from the file, or the default if it is not set."""
+    """Return the [LOGGING] loglevel from the file, or the default if it is not set or not supported."""
     config = _read_parser(config_file)
     if config.has_section("LOGGING"):
         for key, value in config["LOGGING"].items():
             if key.lower() == "loglevel":
-                return value.strip()
+                value = value.strip().upper()
+                return value if value in LOG_LEVELS else DEFAULT_LOG_LEVEL
     return DEFAULT_LOG_LEVEL
 
 

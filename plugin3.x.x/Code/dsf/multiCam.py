@@ -26,7 +26,7 @@ from routes import app, start_cameras, set_settings_state
 
 from logger_module import (setup_log, set_log_level)
 
-def getIP(port):
+def validate_port(port):
 	#  Get the IP and check if Port are available for use
 	this_ip_address = ''
 	if port != 0:
@@ -81,6 +81,9 @@ if __name__ == "__main__":
 
 	CONFIGFILENAME = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent / "config.ini"
 	LOGFILENAME = CONFIGFILENAME.parent / "multiCam.log"
+	SETTINGSFILENAME = Path(__file__).parent / 'settings.config'
+	print (f'{SETTINGSFILENAME=}')
+
 
 	if not setup_log(progName,LOGFILENAME):
 		logger.error(f"Failed to setup logging to {LOGFILENAME}. Please ensure the file is writable.")
@@ -89,13 +92,21 @@ if __name__ == "__main__":
 	from logger_module import logger # Need to import after setup_logging is called
 	logger.info(f'''Log file for {progName} -- {progVersion}''')
 
-	
-	from get_config import (parse_config, get_installed_cameras, configure_cameras,
+	from get_config import (get_port, parse_config, get_installed_cameras, configure_cameras,
 						get_device_capabilities, get_effective_settings)
 
 	try:
 		# Get info from config file
-		PORT, LOGLEVEL, cameras_to_use, cameras_to_use_configs = parse_config(CONFIGFILENAME,logger)
+		PORT = get_port(CONFIGFILENAME)
+		print(f'{PORT=}')
+		this_ip_address = validate_port(PORT)
+	except Exception as e:
+		logger.info(f'{e}')
+		force_quit(1)
+
+	try:
+		# Get info from config file
+		LOGLEVEL, cameras_to_use, cameras_to_use_configs = parse_config(SETTINGSFILENAME,logger)
 	except Exception as e:
 		logger.info(f'{e}')
 		force_quit(1)
@@ -114,12 +125,12 @@ if __name__ == "__main__":
 
 	# Values shown on the settings page
 	try:
-		set_settings_state(CONFIGFILENAME, get_device_capabilities(installed_cameras), get_effective_settings(configured_cameras))
+		set_settings_state(SETTINGSFILENAME, get_device_capabilities(installed_cameras), get_effective_settings(configured_cameras))
 	except Exception as e:
 		logger.warning(f'Settings page will not show camera capabilities - {e}')
-		set_settings_state(CONFIGFILENAME, {"USB": {}, "PICAMERA": {}}, {})
+		set_settings_state(SETTINGSFILENAME, {"USB": {}, "PICAMERA": {}}, {})
 
-	this_ip_address = getIP(PORT)
+
 
 	# Start uvicorn in a background thread
 	def run_server():
@@ -161,6 +172,8 @@ if __name__ == "__main__":
 
 	logger.info('-------------------------------------------------------\n')
 	logger.info(f"View cameras at http://{this_ip_address}:{PORT}\n")
+	logger.info(f"Manage settings at http://{this_ip_address}:{PORT}/settings\n")
+
 	for camera_name, camera_settings in configured_cameras.items():
 		camera_name = camera_name.replace(' ', '%20')
 		logger.info(f"{camera_name} streaming url is http://{this_ip_address}:{PORT}/{camera_name}/{camera_settings['streamname']}")
