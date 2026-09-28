@@ -1121,7 +1121,8 @@ def get_port(config_file):
 						port_value = value.strip()
 
 			if port_value is None:
-				raise ValueError('Config file must have a PORT specified e.g. port = 8001')
+				return port_value  #  Will attempt to assign a default value
+				# raise ValueError('Config file must have a PORT specified e.g. port = 8001')
 
 			PORT = int(port_value)
 			if PORT < 1024 or PORT > 65535:

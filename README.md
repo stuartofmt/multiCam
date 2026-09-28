@@ -41,6 +41,11 @@ Use `multiCam.config.example` as a starting point. The file contains a single
 line, `port = <number>`. The port is required, must be between 1024 and 65535,
 and must not conflict with DWC or other plugins or applications.
 
+**If a port number is not provided or there is a conflict with an existing port then a default will be attempted**
+**Default ports are in the range 17800 to 17900**
+**Check the logfile for the actual port assignment**
+
+
 Restart the plugin after changing the port.
 
 ### Settings page

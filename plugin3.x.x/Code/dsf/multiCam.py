@@ -46,38 +46,49 @@ DEFAULT_SETTINGS = """# --------------------------------------------------
 loglevel = INFO
 """
 
-def validate_port(port):
-	#  Get the IP and check if Port are available for use
-	this_ip_address = ''
-	if port != 0:
-		#  Get the local ip address
-		s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-		try:
-			s.connect(('10.255.255.255', 1))  # doesn't even have to be reachable
-			this_ip_address = s.getsockname()[0]
-		except Exception as e:
-			logger.critical(f'''Unknown error trying to get the local IP address''')
-			logger.critical(f'''{e}''')
-			s.close()
-			force_quit(1)
-		finally:
-			s.close()
 
-		# Check that the port is available
-		try:
-			sock = socket.socket()
-			if sock.connect_ex((this_ip_address, port)) == 0:
-				raise Exception(f'''Port {port} is already in use.''')
-		except Exception as e:
-			logger.critical(f'''{e}''')
-			sock.close()
-			force_quit(1)  
-	else:
-		logger.critical('No port number was provided - terminating the program')
+def port_in_use(ip_address, port):
+	#  A successful connection means something is already listening there
+	with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+		sock.settimeout(1)
+		return sock.connect_ex((ip_address, port)) == 0
+
+
+def validate_port(port=0, start_port=17800, max_tries=100):
+	#  Get the local ip address
+	this_ip_address = ''
+	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+	try:
+		s.connect(('10.255.255.255', 1))  # doesn't even have to be reachable
+		this_ip_address = s.getsockname()[0]
+	except Exception as e:
+		logger.critical(f'''Unknown error trying to get the local IP address''')
+		logger.critical(f'''{e}''')
 		force_quit(1)
-	
+	finally:
+		s.close()
+
+	if port:
+		#  A port was provided - check that it is available
+		if port_in_use(this_ip_address, port):
+			logger.warning(f'''Port {port} is already in use - falling back to searching from {start_port}''')
+			port = 0
+	else:
+		logger.info(f'''No port number was provided - searching for a free port starting at {start_port}''')
+
+	if not port:
+		#  No usable port yet - search for one starting at start_port
+		for candidate in range(start_port, start_port + max_tries):
+			if not port_in_use(this_ip_address, candidate):
+				port = candidate
+				break
+		else:
+			logger.critical(f'''No free port found between {start_port} and {start_port + max_tries - 1}''')
+			force_quit(1)
+
 	logger.info(f'''IP address {this_ip_address} with port {port} is available''')
-	return this_ip_address
+	return this_ip_address, port
+
 
 def force_quit(code):
 	logger.critical(f'''Terminating the program with exit code {code}''')
@@ -122,7 +133,7 @@ if __name__ == "__main__":
 		# Get info from config file
 		PORT = get_port(CONFIGFILENAME)
 		print(f'{PORT=}')
-		this_ip_address = validate_port(PORT)
+		this_ip_address, PORT = validate_port(PORT)
 	except Exception as e:
 		logger.info(f'{e}')
 		force_quit(1)
