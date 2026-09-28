@@ -191,7 +191,8 @@ function renderAll() {
         renderEmptyState();
         return;
     }
-    for (const camera of cameras) {
+    const sorted = [...cameras].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "variant" }));
+    for (const camera of sorted) {
         cameraList.appendChild(renderCard(camera));
     }
 }

@@ -14,7 +14,7 @@ not-in-use/
 *.sh
 multiCam.config
 multiCam.log
-settings.config.back
+settings.config.bak
 settings.config
 *.log
 callgraph

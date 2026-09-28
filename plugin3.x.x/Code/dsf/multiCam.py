@@ -172,19 +172,20 @@ if __name__ == "__main__":
 	time.sleep(2)
 
 	with httpx.Client() as client:
-		for camera_name, camera_settings in configured_cameras.items():
-			try:
-				camera_payload = camera_settings
-				response = client.post(
-					f"http://{this_ip_address}:{PORT}/api/add-camera",
-					json=camera_payload,
-				)
-				if response.is_success and response.json().get("status") == "success":
-					logger.info(f"Added {camera_name} with source '{camera_payload['source']}'")
-				else:
-					logger.error(f"Error adding camera {camera_name}: {response.text}")
-			except Exception as e:
-				logger.error(f"Error adding camera {camera_name}: {e}")
+			# Use case sensitive order based on keys		
+			for camera_name, camera_settings in sorted(configured_cameras.items()):
+				try:
+					camera_payload = camera_settings
+					response = client.post(
+						f"http://{this_ip_address}:{PORT}/api/add-camera",
+						json=camera_payload,
+					)
+					if response.is_success and response.json().get("status") == "success":
+						logger.info(f"Added {camera_name} with source '{camera_payload['source']}'")
+					else:
+						logger.error(f"Error adding camera {camera_name}: {response.text}")
+				except Exception as e:
+					logger.error(f"Error adding camera {camera_name}: {e}")
 
 	# Start all cameras after registration
 	try:

@@ -15,6 +15,8 @@ It has been programmed with efficiency in mind:
 - hardware acceleration is used where available (e.g., 180° rotation on Pi cameras costs no CPU)
 - control values are validated and clamped to device limits rather than attempting invalid settings that would fail
 
+Cameras can be viewed from the camera streams page `http://<SBC-IP>:<port>`
+
 ![Camera streams](images/index.png)
 
 ## Installation
@@ -69,6 +71,8 @@ Press **Save** to write the changes, or **Discard changes** to go back to the
 saved values. Saved changes take effect when the plugin is restarted; until
 then a banner is shown, and the Effective column still shows the values the
 cameras are running with.
+
+**Note that the cameras details are display in order of the camera name (alphabetically - case sensitive).  
 
 ## Logging
 
