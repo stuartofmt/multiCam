@@ -1,0 +1,32 @@
+name: Attach plugin zips to release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Upload zips to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          shopt -s nullglob
+          files=(plugin3.x.x/*.zip)
+
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No zip files found in plugin3.x.x/"
+            exit 1
+          fi
+
+          for f in "${files[@]}"; do
+            echo "Uploading $f"
+            gh release upload "$TAG" "$f" --clobber
+          done
