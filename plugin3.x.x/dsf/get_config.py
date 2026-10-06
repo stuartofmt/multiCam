@@ -1,4 +1,3 @@
-import configparser
 import errno
 import fcntl
 import os
@@ -15,6 +14,7 @@ from defaults import (
 )
 from logger_module import logger
 from multi_camera import normalize_rotation
+from settings_config import load_settings, LOG_LEVELS, DEFAULT_LOG_LEVEL
 
 # --- CSI cameras via picamera2 ---
 from picamera2 import Picamera2
@@ -846,27 +846,27 @@ def validate_pi_camera_configs(cameras: Dict[str, dict], applied_options: Option
 
 
 
-def get_config_from_file(config, name, source, cameratype):
+def get_config_from_file(values, name, source, cameratype):
 	"""
 	Build the default settings dictionaries for a single camera.
+
+	values: the camera's "values" from the settings file - only the
+	settings / options that were set.
 	"""
 
-	file_options = {}
-	file_settings = {}
+	values = values or {}
+	file_options = {
+		key.lower(): _cast_option(key.lower(), value)
+		for key, value in values.items()
+		if key.lower() in AllowedOptions.__members__
+	}
 
-	if config.has_section(name):
-		file_options.update({
-			key.lower(): _cast_option(key.lower(), value)
-			for key, value in config[name].items()
-			if key.lower() in AllowedOptions.__members__
-		})
-
-		valid_settings = [setting.name for setting in DefaultCameraSettings]
-		file_settings.update({
-			key.lower(): value.strip() if key.lower() in URL_NAME_SETTINGS else float(value)
-			for key, value in config[name].items()
-			if key.lower() in valid_settings
-		})
+	valid_settings = [setting.name for setting in DefaultCameraSettings]
+	file_settings = {
+		key.lower(): str(value).strip() if key.lower() in URL_NAME_SETTINGS else float(value)
+		for key, value in values.items()
+		if key.lower() in valid_settings
+	}
 
 	
 	mpeg_default = {}		
@@ -1018,7 +1018,7 @@ def find_pi_cameras():
 	supports.
 
 	Returns a list of the Picamera2 slots of those cameras. These match the
-	camera sources that parse_config resolves from PICAMERAS.
+	camera sources that parse_config resolves from PICAMERA sources.
 	"""
 	try:
 		pi_camera_indices = get_pi_camera_indices()
@@ -1080,60 +1080,42 @@ def resolve_pi_camera_index(camera_number):
 	"""Resolve a user-facing Pi-camera ordinal to its Picamera2 slot."""
 	if camera_number < 0:
 		raise ValueError(
-			f'PICAMERAS index {camera_number} does not identify a Pi camera'
+			f'PICAMERA index {camera_number} does not identify a Pi camera'
 		)
 	pi_camera_indices = get_pi_camera_indices()
 	try:
 		return pi_camera_indices[camera_number]
 	except IndexError as e:
 		raise ValueError(
-			f'PICAMERAS index {camera_number} does not identify a Pi camera'
+			f'PICAMERA index {camera_number} does not identify a Pi camera'
 		) from e
 
 
-def get_port(config_file):
+def get_port(settings_file):
 	"""
-	Read and validate the config file.
+	Read the UI port from the settings file.
 
-	The file has no sections, just a "port = <number>" line.
-	Blank lines and lines starting with # or ; are ignored.
+	A missing port or port 0 both return 0, meaning a free port
+	will be assigned.
 
 	Returns:
 		PORT
 
 	Raises:
-		Exception('Config Issue') if the file is invalid.
+		Exception('Settings Issue') if the port is invalid.
 	"""
-	if not os.path.exists(config_file):
-		raise Exception(f"No Config file found at: {config_file}" )
+	logger.debug(f"Reading port from {settings_file}")
+	try:
+		PORT = int(load_settings(settings_file)['port'] or 0)
+		if PORT != 0 and (PORT < 1024 or PORT > 65535):
+			raise ValueError('UI PORT must be 0 or between 1024 and 65535')
 
-	else:
-		logger.debug(f"Parsing {config_file}")
-		try:
-			port_value = None
-			with open(config_file) as f:
-				for line in f:
-					line = line.strip()
-					if not line or line.startswith(('#', ';')):
-						continue
-					key, sep, value = line.partition('=')
-					if sep and key.strip().lower() == 'port':
-						port_value = value.strip()
+		return PORT
 
-			if port_value is None:
-				return port_value  #  Will attempt to assign a default value
-				# raise ValueError('Config file must have a PORT specified e.g. port = 8001')
-
-			PORT = int(port_value)
-			if PORT < 1024 or PORT > 65535:
-				raise ValueError('UI PORT must be between 1024 and 65535')
-
-			return PORT
-		
-		except Exception as e:
-			logger.critical(f'Error parsing config file {config_file}')
-			logger.critical(f'{e}')
-			raise Exception('Config Issue')
+	except Exception as e:
+		logger.critical(f'Error reading port from settings file {settings_file}')
+		logger.critical(f'{e}')
+		raise Exception('Settings Issue')
 
 
 
@@ -1141,9 +1123,8 @@ def parse_config(config_file,logger):
 	"""
 	Read and validate the camera and settings file.
 
-	Checks LOGGING level, and builds settings for each
-	camera listed under USBCAMERAS, PICAMERAS and STREAMS. The requested
-	settings are logged.
+	Checks the log level, and builds settings for each camera
+	in the file. The requested settings are logged.
 
 	Returns:
 		(LOGLEVEL, CAMERAS, CAMERA_CONFIG), where CAMERAS maps camera
@@ -1158,57 +1139,47 @@ def parse_config(config_file,logger):
 	else:
 		logger.debug(f"Parsing {config_file}")
 		try:
-			config = configparser.ConfigParser()
-			config.optionxform = str #preserves case of keys
-			config.read(config_file)
+			settings = load_settings(config_file)
 
-			# Convert to dict
-			# Source - https://stackoverflow.com/a/28990982
-			config_dict = {s:dict(config.items(s)) for s in config.sections()}
-
-			try:
-				# Get lOGGING SETTINGS
-				if "LOGGING" in config_dict:
-					logging_section = config_dict["LOGGING"]
-					#Change the keys to lower for UI and UPPER for LOGGING, but not for USBCAMERAS or PICAMERAS
-					config_dict_logging = {k.upper():v for k,v in logging_section.items()}
-
-					# LOGGING
-					LOGLEVEL = config_dict_logging.get('LOGLEVEL', 'INFO')
-					if LOGLEVEL not in ['DEBUG','INFO']:
-						LOGLEVEL = 'INFO'
-				else:
-					LOGLEVEL = 'INFO'
-			except Exception as e:
-				raise Exception(f'Error trying to get LOGGING information')
+			# LOGGING
+			LOGLEVEL = str(settings['loglevel']).strip().upper()
+			if LOGLEVEL not in LOG_LEVELS:
+				LOGLEVEL = DEFAULT_LOG_LEVEL
 
 			# Process all Camera settings
 
 			CAMERAS = {}
 			CAMERA_CONFIG = {}
 
-			for name, source in config_dict.get('USBCAMERAS', {}).items():
-				if source.startswith('/dev/video'):
-					CAMERAS[name], CAMERA_CONFIG[name] = get_config_from_file(config, name, source,"USB")
+			for camera in settings['cameras']:
+				name = str(camera.get('name', ''))
+				cameratype = str(camera.get('cameratype', '')).upper()
+				source = str(camera.get('source', '')).strip()
+				values = camera.get('values') or {}
 
-			for name, source in config_dict.get('PICAMERAS', {}).items():
-				try:
-					camera_number = int(source)
-				except ValueError:
-					raise ValueError(f'PICAMERAS entry {name} must be an integer camera index')
-				source = resolve_pi_camera_index(camera_number)
-				CAMERAS[name], CAMERA_CONFIG[name] = get_config_from_file(config, name, source,"PICAMERA")
+				if cameratype == 'USB':
+					if source.startswith('/dev/video'):
+						CAMERAS[name], CAMERA_CONFIG[name] = get_config_from_file(values, name, source, "USB")
 
-			for name, source in config_dict.get('STREAMS', {}).items():
-				if any(
-                    source.startswith(network_type)
-                    for network_type in NETWORK_TYPES
-                ):
-					CAMERAS[name], CAMERA_CONFIG[name] = get_config_from_file(config, name, source,"STREAM")
+				elif cameratype == 'PICAMERA':
+					try:
+						camera_number = int(source)
+					except ValueError:
+						raise ValueError(f'PICAMERA camera {name} source must be an integer camera index')
+					source = resolve_pi_camera_index(camera_number)
+					CAMERAS[name], CAMERA_CONFIG[name] = get_config_from_file(values, name, source, "PICAMERA")
+
+				elif cameratype == 'STREAM':
+					if any(
+						source.startswith(network_type)
+						for network_type in NETWORK_TYPES
+					):
+						CAMERAS[name], CAMERA_CONFIG[name] = get_config_from_file(values, name, source, "STREAM")
+
 			'''
 			if CAMERAS == {}:
 				get_installed_cameras()
-				raise ValueError('At least one camera must be specified in [USBCAMERAS] or [PICAMERAS] or [STREAM]')		
+				raise ValueError('At least one camera must be specified')		
 			'''
 
 			# All tests passed - log effective configuration
@@ -1426,7 +1397,7 @@ def get_device_capabilities(installed_cameras):
 			                 "settings": {name: {min, max}}}},
 			"PICAMERA": {"<config index>": {...same...}},
 		}
-		PICAMERA entries are keyed by the index used in [PICAMERAS].
+		PICAMERA entries are keyed by the camera index (source) in the settings file.
 	"""
 	capabilities = {"USB": {}, "PICAMERA": {}}
 

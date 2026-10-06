@@ -21,6 +21,8 @@ from settings_config import (
     LOG_LEVELS,
     read_camera_config,
     read_log_level,
+    read_port,
+    validate_port,
     settings_schema,
     validate_cameras,
     write_camera_config,
@@ -126,13 +128,16 @@ settings_state = {
     "capabilities": {"USB": {}, "PICAMERA": {}},
     # Values each camera runs with (see get_config.get_effective_settings)
     "effective": {},
+    # Port the web interface is running on
+    "port": None,
     # The config file was saved since startup, so the running cameras don't match it.
     "restart_required": False,
 }
 
 
-def set_settings_state(config_file, capabilities, effective):
+def set_settings_state(config_file, capabilities, effective, port):
     settings_state["config_file"] = config_file
+    settings_state["port"] = port
     settings_state["capabilities"] = capabilities
     settings_state["effective"] = effective
 
@@ -165,6 +170,7 @@ async def get_settings():
     try:
         cameras = read_camera_config(config_file)
         log_level = read_log_level(config_file)
+        port = read_port(config_file)
     except Exception as e:
         return JSONResponse({"status": "error", "message": f"Could not read {config_file}: {e}"}, status_code=500)
     return {
@@ -172,6 +178,9 @@ async def get_settings():
         "config_file": str(config_file),
         "cameras": cameras,
         "log_level": log_level,
+        # port as set in the file (0 = pick a free port) and the port actually in use
+        "port": port,
+        "port_in_use": settings_state["port"],
         "capabilities": settings_state["capabilities"],
         # Only cameras that were added and are running have effective values.
         "effective": {
@@ -193,8 +202,10 @@ class SettingsCamera(BaseModel):
 
 class SettingsRequest(BaseModel):
     cameras: list[SettingsCamera]
-    # None leaves [LOGGING] unchanged.
+    # None leaves the log level unchanged.
     log_level: Optional[str] = None
+    # None leaves the port unchanged; 0 picks a free port.
+    port: Optional[int] = None
 
 
 @app.post("/api/settings")
@@ -207,11 +218,15 @@ async def save_settings(request: SettingsRequest):
     log_level = request.log_level.upper() if request.log_level else None
     if log_level is not None and log_level not in LOG_LEVELS:
         errors.append(f"Log level must be one of {', '.join(LOG_LEVELS)}")
+    if request.port is not None:
+        port_error = validate_port(request.port)
+        if port_error:
+            errors.append(port_error)
     if errors:
         return JSONResponse({"status": "error", "errors": errors}, status_code=400)
 
     try:
-        write_camera_config(config_file, cameras, log_level)
+        write_camera_config(config_file, cameras, log_level, request.port)
     except Exception as e:
         logger_module.logger.error(f"Could not save {config_file}: {e}")
         return JSONResponse({"status": "error", "message": f"Could not save {config_file}: {e}"}, status_code=500)

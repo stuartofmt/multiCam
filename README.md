@@ -15,7 +15,9 @@ It has been programmed with efficiency in mind:
 - hardware acceleration is used where available (e.g., 180° rotation on Pi cameras costs no CPU)
 - control values are validated and clamped to device limits rather than attempting invalid settings that would fail
 
-Cameras can be viewed from the camera streams page `http://<SBC-IP>:<port>`
+Cameras can be viewed from the camera streams page `http://<SBC-IP>:<port>`.
+The IP address and port are shown in the logfile - see
+[Finding the IP address and port](#finding-the-ip-address-and-port).
 
 ![Camera streams](images/index.png)
 
@@ -23,30 +25,57 @@ Cameras can be viewed from the camera streams page `http://<SBC-IP>:<port>`
 
 The plugin is installed using DWC in the normal manner.  **Note that there are multiple libraries that need to be install so please be patient - it could take several minutes**
 
+## Finding the IP address and port
+
+**The IP address and port multiCam is using are written to the logfile
+`sys/multiCam/multiCam.log` every time the plugin starts.** Check the logfile
+after installing the plugin, and after any restart, to find them. You can
+open the logfile from DWC (**Files > System**, folder `multiCam`).
+
+Look for lines like these near the end of startup:
+
+```text
+View cameras at http://192.168.1.50:17800
+Manage settings at http://192.168.1.50:17800/settings
+```
+
+The log also lists the stream and snapshot URL of each camera.
+
+The port can change between restarts when it is set to 0 (the default) or the
+configured port is already in use, so check the logfile if a page can no longer
+be reached.
+
 ## Configuration
 
-Configuration is in two parts:
+All configuration (the port, cameras, their settings and the log level) is
+managed from the [settings page](#settings-page). Default values are used the
+first time the plugin starts.
 
-- the **port** the web interface runs on, set in a small configuration file;
-- everything else (cameras, their settings and the log level), managed from
-  the [settings page](#settings-page).
+**Note:** the settings are saved in `sys/multiCam/settings.config`. This file
+is encoded and protected by a checksum - **do not attempt to edit it**. If the
+file is changed outside the settings page it will fail the checksum, and the
+plugin will replace it with default settings the next time it is read, so all
+cameras and settings will be lost. The previous file is kept as
+`settings.config.bak`.
 
 ### Port
 
-The port is read from:
+By default (port 0) multiCam picks a free port, starting at 17800 and
+searching up to 17899. A free port is also picked if the port you set is
+already in use.
 
-`sys/multiCam/multiCam.config`
+The IP address and port in use are written to the logfile
+(`sys/multiCam/multiCam.log`) at startup - see
+[Finding the IP address and port](#finding-the-ip-address-and-port). The port
+in use is also shown on the [settings page](#settings-page), but the first
+time the plugin starts you need the logfile to find the address of the
+settings page.
 
-Use `multiCam.config.example` as a starting point. The file contains a single
-line, `port = <number>`. The port is required, must be between 1024 and 65535,
-and must not conflict with DWC or other plugins or applications.
-
-**If a port number is not provided or there is a conflict with an existing port then a default will be attempted**
-**Default ports are in the range 17800 to 17900**
-**Check the logfile for the actual port assignment**
-
-
-Restart the plugin after changing the port.
+To use a fixed port, enter it in the **Port** field on the settings page and
+press **Save**. The port must be between 1024 and 65535 and must not conflict
+with DWC or other plugins or applications. Set it to 0 (or leave it blank) to
+go back to picking a free port. Restart the plugin for a port change to take
+effect.
 
 ### Settings page
 
@@ -70,6 +99,9 @@ From the settings page you can:
   - **Min / Max / Default**: the limits and default the camera reports.
   - **Effective**: the value the running camera is actually using, after any
     adjustment by the plugin.
+- Set the **port**. The field shows the configured port
+  (0 = pick a free port), with the port currently in use beside it. See
+  [Port](#port).
 - Set the **log level**.
 
 Press **Save** to write the changes, or **Discard changes** to go back to the
@@ -83,6 +115,10 @@ cameras are running with.
 
 The log level can be `INFO` (the default) or `DEBUG`. The log is written to
 `sys/multiCam/multiCam.log`.
+
+The log shows the IP address and port in use, and the URLs of the camera
+streams page, the settings page and each camera's stream and snapshot. See
+[Finding the IP address and port](#finding-the-ip-address-and-port).
 
 To help identify and choose cameras, the plugin logs at startup:
 

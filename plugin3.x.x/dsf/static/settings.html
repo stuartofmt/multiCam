@@ -31,6 +31,11 @@
             <button id="add-camera" type="button" class="button">+ Add camera</button>
             <button id="save" type="button" class="button button-primary" disabled>Save</button>
             <button id="discard" type="button" class="button" disabled>Discard changes</button>
+            <label class="port-setting">
+                <span>Port</span>
+                <input id="port" type="number" min="0" max="65535" step="1">
+                <span id="port-in-use" class="port-in-use"></span>
+            </label>
             <label class="log-level">
                 <span>Log level</span>
                 <select id="log-level">

@@ -29,7 +29,6 @@ def setup_log(progName,logfile):
 		c_format = logging.Formatter(format)
 		c_handler.setFormatter(c_format)
 		logger.addHandler(c_handler)
-		create_log_file(logger,logfile)
 		return logger
 	except Exception as e:
 		print(f"Failed to setup logging: {e}")
@@ -44,7 +43,11 @@ def setup_log(progName,logfile):
 
 def create_log_file(console_logger, logfile):
 	global logger
-	try:	
+	try:
+		logdir = os.path.dirname(logfile)
+		if logdir:
+			os.makedirs(logdir, exist_ok=True)
+
 		if os.path.exists(logfile):
 			os.remove(logfile)
 

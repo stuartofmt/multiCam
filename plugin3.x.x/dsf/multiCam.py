@@ -23,29 +23,9 @@ import socket
 import signal
 
 from routes import app, start_cameras, set_settings_state
+from settings_config import ensure_settings_file
 
 from logger_module import (setup_log, set_log_level)
-
-DEFAULT_SETTINGS = """# --------------------------------------------------
-# Camera parameters for multiCam
-# ---------------------------------------------------
-
-# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-# DO NOT EDIT BELOW THIS LINE
-# USE THE CONFIGURATION PAGE AT http://<IP>:<PORT>/Settings
-# TO MANAGE CAMERAS
-# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-[USBCAMERAS]
-
-[PICAMERAS]
-
-[STREAMS]
-
-[LOGGING]
-loglevel = INFO
-"""
-
 
 def port_in_use(ip_address, port):
 	#  A successful connection means something is already listening there
@@ -110,13 +90,16 @@ if __name__ == "__main__":
 	progName = os.path.splitext(os.path.basename(sys.argv[0]))[0]
 	progVersion = '1.0.0'
 
-	CONFIGFILENAME = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent / "config.ini"
-	LOGFILENAME = CONFIGFILENAME.parent / "multiCam.log"
-	SETTINGSFILENAME = Path(__file__).parent / 'settings.config'
+	LOGFILENAME = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent / "multiCam.log"
+	#  The settings file is kept in the same folder as the logfile
+	SETTINGSFILENAME = LOGFILENAME.parent / 'settings.config'
 	print (f'{SETTINGSFILENAME=}')
-	if not SETTINGSFILENAME.exists():
-		SETTINGSFILENAME.write_text(DEFAULT_SETTINGS)
-		print(f'Created default settings file {SETTINGSFILENAME}')
+	#  Create the settings file (and folder), or replace it if it fails the checksum
+	try:
+		settings_message = ensure_settings_file(SETTINGSFILENAME)
+	except Exception as e:
+		print(f'Could not create settings file {SETTINGSFILENAME}: {e}')
+		sys.exit(1)
 
 
 	if not setup_log(progName,LOGFILENAME):
@@ -125,13 +108,15 @@ if __name__ == "__main__":
 
 	from logger_module import logger # Need to import after setup_logging is called
 	logger.info(f'''Log file for {progName} -- {progVersion}''')
+	if settings_message:
+		logger.info(settings_message)
 
 	from get_config import (get_port, parse_config, get_installed_cameras, configure_cameras,
 						get_device_capabilities, get_effective_settings)
 
 	try:
-		# Get info from config file
-		PORT = get_port(CONFIGFILENAME)
+		# Get port from settings file
+		PORT = get_port(SETTINGSFILENAME)
 		print(f'{PORT=}')
 		this_ip_address, PORT = validate_port(PORT)
 	except Exception as e:
@@ -139,7 +124,7 @@ if __name__ == "__main__":
 		force_quit(1)
 
 	try:
-		# Get info from config file
+		# Get log level and cameras from settings file
 		LOGLEVEL, cameras_to_use, cameras_to_use_configs = parse_config(SETTINGSFILENAME,logger)
 	except Exception as e:
 		logger.info(f'{e}')
@@ -159,10 +144,10 @@ if __name__ == "__main__":
 
 	# Values shown on the settings page
 	try:
-		set_settings_state(SETTINGSFILENAME, get_device_capabilities(installed_cameras), get_effective_settings(configured_cameras))
+		set_settings_state(SETTINGSFILENAME, get_device_capabilities(installed_cameras), get_effective_settings(configured_cameras), PORT)
 	except Exception as e:
 		logger.warning(f'Settings page will not show camera capabilities - {e}')
-		set_settings_state(SETTINGSFILENAME, {"USB": {}, "PICAMERA": {}}, {})
+		set_settings_state(SETTINGSFILENAME, {"USB": {}, "PICAMERA": {}}, {}, PORT)
 
 
 

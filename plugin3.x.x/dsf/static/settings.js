@@ -1,4 +1,4 @@
-// Settings page: edits the camera entries of multiCam.config.
+// Settings page: edits the camera entries of settings.json.
 // Requested values come from the config file, Min / Max / Default and Effective
 // from what the cameras reported when multiCam started.
 
@@ -22,6 +22,8 @@ const messages = document.getElementById("messages");
 const saveButton = document.getElementById("save");
 const discardButton = document.getElementById("discard");
 const logLevelSelect = document.getElementById("log-level");
+const portInput = document.getElementById("port");
+const portInUse = document.getElementById("port-in-use");
 
 // ------------------------------------------------------------
 // Loading and saving
@@ -53,13 +55,23 @@ async function loadSettings() {
     document.getElementById("config-file").textContent = `Configuration file: ${data.config_file}`;
     document.getElementById("restart-banner").hidden = !data.restart_required;
     renderLogLevel(data.log_level);
+    renderPort(data.port, data.port_in_use);
     setDirty(false);
     renderAll();
 }
 
 async function saveSettings() {
+    // A blank port means 0 - pick a free port.
+    const portText = portInput.value.trim();
+    const port = portText === "" ? 0 : Number(portText);
+    if (!Number.isInteger(port)) {
+        showMessages("error", ["Port must be a whole number (0 picks a free port)"]);
+        return;
+    }
+
     const payload = {
         log_level: logLevelSelect.value,
+        port,
         cameras: cameras.map((camera) => {
             const keys = keysFor(camera.cameratype);
             const values = {};
@@ -494,6 +506,14 @@ function renderLogLevel(level) {
     logLevelSelect.value = level;
 }
 
+// The input holds the port set in the file (0 = pick a free port);
+// the port the page is being served from is shown beside it.
+function renderPort(port, inUse) {
+    portInput.value = port;
+    portInUse.textContent = inUse ? `in use: ${inUse}` : "";
+    portInput.title = "0 picks a free port. Restart the plugin after changing the port.";
+}
+
 // ------------------------------------------------------------
 // Page state
 // ------------------------------------------------------------
@@ -563,6 +583,7 @@ document.getElementById("add-camera").addEventListener("click", () => {
 saveButton.addEventListener("click", saveSettings);
 
 logLevelSelect.addEventListener("change", () => setDirty(true));
+portInput.addEventListener("input", () => setDirty(true));
 
 discardButton.addEventListener("click", () => {
     if (confirm("Discard all unsaved changes?")) {

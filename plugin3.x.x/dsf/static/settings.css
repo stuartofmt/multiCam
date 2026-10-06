@@ -253,12 +253,25 @@ select:focus {
     margin-top: 20px;
 }
 
+.port-setting,
 .log-level {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-left: auto;
     color: #bbb;
+}
+
+.port-setting {
+    margin-left: auto;
+}
+
+.port-setting input {
+    width: 7em;
+}
+
+.port-in-use {
+    font-size: 0.9em;
+    color: #888;
 }
 
 .empty-state {
