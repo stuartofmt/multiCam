@@ -1,0 +1,5 @@
+/* No web fonts are loaded - multiCam often runs without internet access. */
+:root {
+    --v-font-body: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    --v-font-heading: var(--v-font-body);
+}

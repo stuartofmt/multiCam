@@ -1,0 +1,22 @@
+# systemd service for multiCam installed standalone (without DWC) by install.sh.
+# Settings and the log are kept in /var/lib/multiCam, the program in /opt/multiCam.
+
+[Unit]
+Description=multiCam camera streaming server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=multicam
+Group=multicam
+# Access to /dev/video*, the Pi camera and its memory buffers
+SupplementaryGroups=video
+WorkingDirectory=/opt/multiCam/app
+ExecStart=/opt/multiCam/venv/bin/python -u /opt/multiCam/app/multiCam.py /var/lib/multiCam/multiCam.log
+# multiCam stops if, for example, the network is not up yet - try again
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

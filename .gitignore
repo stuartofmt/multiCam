@@ -23,3 +23,12 @@ call_graph_pyan.py
 x*.py
 *.copy
 *.claude
+
+# The release script (scripts/release.sh) is needed - *.sh above would ignore it
+!scripts/release.sh
+
+# Web interface build tooling (ui/) - the built files in plugin3.x.x/dsf/static are committed
+node_modules/
+
+# Standalone ZIP built locally by scripts/release-standalone.mjs
+standalone/*.zip

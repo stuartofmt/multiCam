@@ -1,0 +1,6 @@
+# Left out of the standalone ZIP as well as what scripts/release-exclude.txt leaves out.
+# Patterns are relative to the Code folder (plugin3.x.x) - see scripts/release-exclude.txt for the rules.
+
+# Only used when multiCam is installed as a DWC plugin
+plugin.json
+sd/

@@ -1,0 +1,57 @@
+# Original camera- and cinema-themed release titles, one per line (blank lines and #comments ignored).
+# Titles are given out in order, one per release - only ever add new ones at the end.
+Lights, Camera, Action
+Opening Shot
+Wide Angle
+Into Focus
+Rolling Frames
+The Long Take
+Golden Hour
+Close-Up
+Steady Cam
+Picture Perfect
+Through the Lens
+Shutter Speed
+Depth of Field
+The Director's Chair
+Second Unit
+Establishing Shot
+Fade In
+Over the Shoulder
+Tracking Shot
+Rack Focus
+Behind the Scenes
+On Location
+The Dailies
+Frame by Frame
+Pan and Tilt
+Low Light
+The Wide Shot
+Aperture Wide Open
+Clapperboard
+Center Stage
+Every Angle Covered
+Split Screen
+Blue Hour
+Panorama
+Time Lapse
+Slow Motion
+Reel to Reel
+Cut to Black
+Point of View
+Dolly Zoom
+Field of View
+Silver Screen
+Matinee
+The Projection Booth
+Camera Obscura
+Viewfinder
+Aspect Ratio
+Exposure
+Soft Focus
+Crane Shot
+Bird's-Eye View
+Final Cut
+Encore Screening
+Credits Roll
+Fade Out

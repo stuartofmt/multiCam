@@ -23,7 +23,35 @@ The IP address and port are shown in the logfile - see
 
 ## Installation
 
+multiCam can be installed in two ways. Both run the same program and have the
+same camera page and settings page.
+
+### As a DWC plugin
+
 The plugin is installed using DWC in the normal manner.  **Note that there are multiple libraries that need to be install so please be patient - it could take several minutes**
+
+### Standalone (without DWC)
+
+multiCam can also run on its own on Raspberry Pi OS, with no DuetWebControl or
+Duet. Download `standalone-multiCam-<version>.zip` from the release, unzip it on
+the Pi and run:
+
+```sh
+sudo bash install.sh
+```
+
+This installs the packages multiCam needs, puts it in `/opt/multiCam` and starts
+it as the `multicam` service, which also starts at every boot. At the end it
+shows the address of the camera page. Running it again upgrades multiCam and
+keeps the settings. `INSTALL.md` in the ZIP has the details, including
+`uninstall.sh`.
+
+In a standalone install:
+
+- the log and settings are in `/var/lib/multiCam` (instead of `sys/multiCam`),
+  so find the address with
+  `grep "View cameras at" /var/lib/multiCam/multiCam.log`;
+- restart multiCam after saving settings with `sudo systemctl restart multicam`.
 
 ## Finding the IP address and port
 
@@ -74,7 +102,7 @@ settings page.
 To use a fixed port, enter it in the **Port** field on the settings page and
 press **Save**. The port must be between 1024 and 65535 and must not conflict
 with DWC or other plugins or applications. Set it to 0 (or leave it blank) to
-go back to picking a free port. Restart the plugin for a port change to take
+go back to picking a free port. Restart multiCam for a port change to take
 effect.
 
 ### Settings page
@@ -339,3 +367,26 @@ can be changed for each camera on the settings page.
 The names may only contain letters, digits, `-`, `_` and `~`, and must be
 different from each other. An invalid name is replaced by its default, with a
 warning in the log.
+
+The web interface is built with Vue 3 and Vuetify 4. It is served by multiCam
+itself and does not depend on DWC, so the pages can be opened directly from
+any browser on the network. Everything it needs is included in the plugin -
+no internet access is required.
+
+## Changing the web interface
+
+The source of the web interface is in the `ui/` folder. The built pages are
+committed in `plugin3.x.x/dsf/static`, so Node.js is only needed to change
+the interface, not to install or run the plugin.
+
+```sh
+cd ui
+npm install        # once
+npm run build      # rebuilds plugin3.x.x/dsf/static - commit the result
+```
+
+For live reloading while editing, run `npm run dev` and open
+`http://localhost:5173/static/` (or `/static/settings.html`). API calls and
+camera streams are passed to a running multiCam; set `MULTICAM_URL` if it is
+not at `http://localhost:17800`, e.g.
+`MULTICAM_URL=http://192.168.1.50:17800 npm run dev`.
