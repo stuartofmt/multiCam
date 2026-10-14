@@ -1,11 +1,14 @@
 @echo off
 rem Start the program with its venv (made by Prepare in Prep_and_Package). With no venv - e.g. just
-rem unzipped from a release - it is made first and dsf\requirements.txt is installed into it.
+rem unzipped from a release - it is made first and dsf\requirements.txt (with dsf\requirements-windows.txt, if there is
+rem one) is installed into it.
 cd /d "%~dp0"
+set REQS=-r "dsf\requirements.txt"
+if exist "dsf\requirements-windows.txt" set REQS=%REQS% -r "dsf\requirements-windows.txt"
 if not exist venv\Scripts\python.exe (
   echo First run: making the venv and installing dsf\requirements.txt into it
   py -3 -m venv venv 2>nul || python -m venv venv || goto novenv
-  venv\Scripts\python.exe -m pip install -r dsf\requirements.txt || goto nopip
+  venv\Scripts\python.exe -m pip install %REQS% || goto nopip
 )
 venv\Scripts\python.exe -u dsf\multiCam.py %*
 set CODE=%errorlevel%
@@ -19,7 +22,7 @@ exit /b %CODE%
 echo Could not make the venv: install Python 3 from python.org ^(tick "Add python.exe to PATH"^) and run this again
 goto failed
 :nopip
-echo Could not install dsf\requirements.txt into the venv - see the pip messages above
+echo Could not install the requirements into the venv - see the pip messages above
 :failed
 rmdir /s /q venv 2>nul
 pause

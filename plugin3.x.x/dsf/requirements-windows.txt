@@ -1,0 +1,4 @@
+# Installed as well as requirements.txt on Windows only (run.bat).
+# Camera names, formats and control ranges through DirectShow (windows_cameras.py)
+comtypes
+pygrabber==0.2

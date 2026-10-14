@@ -1,8 +1,10 @@
 #!/bin/bash
 # Start the program with its venv (made by Prepare in Prep_and_Package). With no venv - e.g. just
 # unzipped from a release - it is made first, able to see the system's packages, and dsf/requirements.txt
-# is installed into it.
+# (with dsf/requirements-linux.txt, if there is one) is installed into it.
 cd "$(dirname "$0")" || exit 1
+reqs=(-r "dsf/requirements.txt")
+[ -f "dsf/requirements-linux.txt" ] && reqs+=(-r "dsf/requirements-linux.txt")
 if [ ! -x venv/bin/python ]; then
 	echo "First run: making the venv and installing dsf/requirements.txt into it"
 	python3 -m venv --system-site-packages venv || {
@@ -10,8 +12,8 @@ if [ ! -x venv/bin/python ]; then
 		rm -rf venv   # a half-made venv would be taken as ready next time
 		exit 1
 	}
-	venv/bin/python -m pip install -r dsf/requirements.txt || {
-		echo "Could not install dsf/requirements.txt into the venv - see the pip messages above"
+	venv/bin/python -m pip install "${reqs[@]}" || {
+		echo "Could not install the requirements into the venv - see the pip messages above"
 		rm -rf venv
 		exit 1
 	}
