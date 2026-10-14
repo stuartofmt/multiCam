@@ -2,7 +2,7 @@
     "id": "multiCam",
     "name": "multiCam",
     "author": "Stuartofmt",
-    "version": "1.1.0",
+    "version": "1.5.0",
     "license": "GPL-2.0-or-later",
     "homepage": "https://github.com/stuartofmt",
 	"sbcRequired": true,

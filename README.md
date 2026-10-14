@@ -1,12 +1,14 @@
 # multiCam
 
-multiCam is a Duet Web Control SBC plugin for viewing and streaming multiple
+multiCam is a Duet Web Control plugin for viewing and streaming multiple
 cameras. It supports USB/V4L2 cameras, Raspberry Pi cameras through Picamera2,
-and network cameras that provide an HTTP, HTTPS or RTSP stream.
+and network cameras that provide an HTTP or RTSP stream. **It can also run
+standalone, without DWC, on Linux or Windows** - see
+[Installation](#installation).
 
 It has been programmed with efficiency in mind:
 
-- where possible the camera hardware is used for options like brightness, contrast etc.  If these are not handled by the hardware they are ignored
+- image adjustments such as brightness, contrast, saturation and sharpness are done by the camera hardware (or, for Pi cameras, the Pi's image processor) - never in software. Options a camera does not support are ignored
 - separate libraries are used for USB, PICAMERA and STREAM (largely pass-through)
 - capture and streaming are separated - many designs combine these which can affect latency and throughput
 - frame dropping occurs at capture time, so dropped frames are not decoded or sent, saving CPU and bandwidth
@@ -28,7 +30,7 @@ same camera page and settings page.
 
 ### As a DWC plugin
 
-The plugin is installed using DWC in the normal manner.  **Note that there are multiple libraries that need to be install so please be patient - it could take several minutes**
+The plugin is installed using DWC in the normal manner.  **Note that there are multiple libraries that need to be installed so please be patient - it could take several minutes**
 
 ### Standalone (without DWC)
 
@@ -44,7 +46,7 @@ what multiCam needs, so it needs internet access and takes a few minutes. Later
 starts are quick. If something goes wrong, `run.bat` keeps its window open so
 the reason can be read.
 
-Before the first start:
+Before the first start as a standalone you may need to install the following:
 
 - **Linux:** Python 3 with venv (`sudo apt install python3-venv`) and
   `v4l-utils` for USB cameras (`sudo apt install v4l-utils`). For Pi cameras,
@@ -79,8 +81,22 @@ Manage settings at http://192.168.1.50:17800/settings
 
 The log also lists the stream and snapshot URL of each camera.
 
-It is usually best to select a port number so it remains the same between restarts.  If it is set to 0 (the default) or the
-configured port is already in use - the program will select an available port.
+How the port is chosen:
+
+- **First start:** no port has been set yet (port `0`), so multiCam picks the
+  first free port from 17800 upwards (up to 17899) - usually `17800`. The
+  logfile is the only way to find it, so check it after installing.
+- **Port 0 (the default):** a free port is picked like this at every start. It
+  is normally the same one each time, but can change if another program has
+  taken it in the meantime - so check the logfile if a page can no longer be
+  reached.
+- **A fixed port:** set one on the [settings page](#port) to keep the address
+  the same between restarts (usually best). If that port is already in use
+  when multiCam starts, it falls back to picking a free port from 17800, and
+  says so in the logfile.
+
+Once the settings page is open, it shows the port in use next to the **Port**
+field.
 
 ## Configuration
 
@@ -88,32 +104,13 @@ All configuration (the port, cameras, their settings and the log level) is
 managed from the [settings page](#settings-page). Default values are used the
 first time the plugin starts.
 
-**Note:** the settings are saved in `sys/multiCam/settings.config`. This file
+**Note:** the settings are saved in `sys/multiCam/settings.config` (standalone:
+`dsf/settings.config`). This file
 is encoded and protected by a checksum - **do not attempt to edit it**. If the
 file is changed outside the settings page it will fail the checksum, and the
 plugin will replace it with default settings the next time it is read, so all
 cameras and settings will be lost. The previous file is kept as
 `settings.config.bak`.
-
-### Port
-
-By default (port 0) multiCam picks a free port, starting at 17800 and
-searching up to 17899. A free port is also picked if the port you set is
-already in use.
-
-The IP address and port in use are written to the logfile
-(`sys/multiCam/multiCam.log`) at startup - see
-[Finding the IP address and port](#finding-the-ip-address-and-port). The port
-in use is also shown on the [settings page](#settings-page), but the first
-time the plugin starts you need the logfile to find the address of the
-settings page.
-
-To use a fixed port, enter it in the **Port** field on the settings page and
-press **Save**. The port must be between 1024 and 65535 and must not conflict
-with DWC or other plugins or applications. Set it to 0 (or leave it blank) to
-go back to picking a free port. A port change takes effect when multiCam
-restarts - press **Restart now** on the settings page, and the page follows
-multiCam to the new port.
 
 ### Settings page
 
@@ -134,9 +131,14 @@ From the settings page you can:
 - Set each camera's [settings and options](#cameras). For each one the page
   shows:
   - **Requested**: the value you set. Leave it blank to use the default.
-  - **Min / Max / Default**: the limits and default the camera reports.
-  - **Effective**: the value the running camera is actually using, after any
-    adjustment by the plugin.
+  - **Min / Max / Default**: the limits and default the camera reports. For a
+    menu control (e.g. a USB camera's `autoexposure`) the values it accepts are
+    shown instead, e.g. "1 or 3 / default 3", with their names on hover.
+  - **Effective**: the value the camera is running with, after any adjustment
+    by multiCam (limited to the camera's range, or changed to a supported size
+    or rate). It is worked out when multiCam starts, from what it set: options
+    you did not set show the camera's default, as every control is reset to its
+    default at startup. It is not read back from the camera later.
 - Set the **port**. The field shows the configured port
   (0 = pick a free port), with the port currently in use beside it. See
   [Port](#port).
@@ -149,12 +151,12 @@ a few seconds, while it finds and sets up the cameras) and refreshes the page
 with the new values. Until then the Effective column still shows the values the
 cameras are running with. Open camera stream pages reconnect by themselves.
 
-**Note that the cameras details are display in order of the camera name (alphabetically - case sensitive).  
+**Note that the cameras are displayed in order of camera name (alphabetical - case sensitive).**
 
 ## Logging
 
 The log level can be `INFO` (the default) or `DEBUG`. The log is written to
-`sys/multiCam/multiCam.log`.
+`sys/multiCam/multiCam.log` (standalone: `dsf/multiCam.log`).
 
 The log shows the IP address and port in use, and the URLs of the camera
 streams page, the settings page and each camera's stream and snapshot. See
@@ -178,6 +180,17 @@ Each camera has **settings** (resolution, frame rate, rotation etc.) and, for
 USB and PICAMERA, **options** (camera controls such as brightness and
 contrast). Any you leave blank use the defaults. All values must be numeric,
 except `streamname` and `snapshotname`.
+
+Options are the camera's own controls, carried out by the camera (or the Pi's
+image processor), not by multiCam. They are of two kinds:
+
+- **Image adjustments** - `brightness`, `contrast`, `saturation`,
+  `sharpness` - keep the value set (or their default) whatever else the camera
+  is doing.
+- **Automatic modes** - `autoexposure`, `balance`, `autofocus` - hand exposure
+  time (and on some cameras gain), white balance temperature or focus to the
+  camera. They do not change the image adjustments: with automatic exposure on,
+  brightness and contrast are still the values shown.
 
 ## USB
 
@@ -406,25 +419,3 @@ The names may only contain letters, digits, `-`, `_` and `~`, and must be
 different from each other. An invalid name is replaced by its default, with a
 warning in the log.
 
-The web interface is built with Vue 3 and Vuetify 4. It is served by multiCam
-itself and does not depend on DWC, so the pages can be opened directly from
-any browser on the network. Everything it needs is included in the plugin -
-no internet access is required.
-
-## Changing the web interface
-
-The source of the web interface is in the `ui/` folder. The built pages are
-committed in `plugin3.x.x/dsf/static`, so Node.js is only needed to change
-the interface, not to install or run the plugin.
-
-```sh
-cd ui
-npm install        # once
-npm run build      # rebuilds plugin3.x.x/dsf/static - commit the result
-```
-
-For live reloading while editing, run `npm run dev` and open
-`http://localhost:5173/static/` (or `/static/settings.html`). API calls and
-camera streams are passed to a running multiCam; set `MULTICAM_URL` if it is
-not at `http://localhost:17800`, e.g.
-`MULTICAM_URL=http://192.168.1.50:17800 npm run dev`.
