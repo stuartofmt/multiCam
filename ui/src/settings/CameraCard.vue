@@ -142,7 +142,22 @@ const rows = computed(() => {
 });
 
 function boundsText(bounds) {
-    return typeof bounds === "string" ? bounds : [bounds.min, bounds.max, bounds.default].map(formatValue).join(" / ");
+    if (typeof bounds === "string") {
+        return bounds;
+    }
+    if (bounds.values) {
+        // A menu control only takes its own values (e.g. 1 or 3), not everything from min to max
+        return `${bounds.values.join(" or ")} / default ${formatValue(bounds.default)}`;
+    }
+    return [bounds.min, bounds.max, bounds.default].map(formatValue).join(" / ");
+}
+
+// A menu control's values with their names, shown on hover: "1 = Manual Mode, 3 = Aperture Priority Mode"
+function boundsTitle(bounds) {
+    if (typeof bounds !== "object" || !bounds.labels) {
+        return undefined;
+    }
+    return Object.entries(bounds.labels).map(([value, label]) => `${value} = ${label}`).join(", ");
 }
 
 function effectiveText(key) {
@@ -254,7 +269,11 @@ function rotateItems() {
                                 hide-details
                             />
                         </td>
-                        <td class="text-no-wrap" :class="{ 'text-medium-emphasis': typeof row.bounds === 'string' }">
+                        <td
+                            class="text-no-wrap"
+                            :class="{ 'text-medium-emphasis': typeof row.bounds === 'string' }"
+                            :title="boundsTitle(row.bounds)"
+                        >
                             {{ boundsText(row.bounds) }}
                         </td>
                         <td

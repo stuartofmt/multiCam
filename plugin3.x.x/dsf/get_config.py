@@ -87,6 +87,9 @@ def _cast_option(name, value):
 # Control names and ranges don't change while running, so query each device once.
 _USB_CTRLS_CACHE = {}
 _USB_OPTIONS_CACHE = {}
+# device -> {real control name: {menu value: label}} for menu controls (e.g. auto_exposure: 1 Manual, 3 Aperture
+# Priority). Only these values are accepted, though min/max span the values in between too.
+_USB_MENUS_CACHE = {}
 
 
 def _parse_list_ctrls(device_path):
@@ -127,14 +130,19 @@ def _set_usb_ctrls(device_path, values):
 		name for name in re.findall(r"^(\w+):", result.stderr, re.MULTILINE)
 		if name in values
 	}
-	# A failure that names no control (e.g. device error) means nothing can be trusted.
-	return failed or set(values)
+	if failed:
+		return failed
+	if len(values) > 1:
+		# The driver rejected the whole set without naming a control (e.g. "VIDIOC_S_EXT_CTRLS: Invalid argument" for
+		# a value that is not one of a menu's): set each on its own, so one bad value does not stop the others.
+		return set().union(*(_set_usb_ctrls(device_path, {name: value}) for name, value in values.items()))
+	return set(values)
 
 
 def _query_list_ctrls(device_path):
 	try:
 		result = subprocess.run(
-			["v4l2-ctl", "-d", device_path, "--list-ctrls"],
+			["v4l2-ctl", "-d", device_path, "--list-ctrls-menus"],
 			check=True,
 			capture_output=True,
 			text=True,
@@ -149,13 +157,23 @@ def _query_list_ctrls(device_path):
 		return {}
 
 	all_controls = {}
+	menus = {}
+	real_name = None
 	for line in result.stdout.splitlines():
 		line_clean = line.strip()
+		# A menu control's items follow it, one per line: "1: Manual Mode"
+		menu_match = re.match(r"^(-?\d+):\s*(.*)$", line_clean)
+		if menu_match and real_name in menus:
+			menus[real_name][int(menu_match.group(1))] = menu_match.group(2)
+			continue
 		# Example: "brightness 0x00980900 (int) : min=-64 max=64 step=1 default=0 value=0"
 		name_match = re.match(r"^(\w+)\s+0x[0-9a-fA-F]+", line_clean)
 		if not name_match:
+			real_name = None
 			continue
 		real_name = name_match.group(1)
+		if "(menu)" in line_clean or "(intmenu)" in line_clean:
+			menus[real_name] = {}
 
 		min_match = re.search(r"min=(-?\d+)", line_clean)
 		max_match = re.search(r"max=(-?\d+)", line_clean)
@@ -167,6 +185,7 @@ def _query_list_ctrls(device_path):
 
 		all_controls[real_name] = (min_val, max_val, default_val)
 
+	_USB_MENUS_CACHE[device_path] = {name: items for name, items in menus.items() if items}
 	return all_controls
 
 
@@ -308,6 +327,11 @@ def get_camera_options_usb(camera_name, source):
 				"max": resolved_max,
 				"default": default_val,
 			}
+			menu = _USB_MENUS_CACHE.get(source, {}).get(real_name)
+			if menu:
+				# A menu only takes its own values (e.g. 1 and 3), not everything from min to max
+				writable_controls[canonical_name]["values"] = sorted(menu)
+				writable_controls[canonical_name]["labels"] = {str(k): v for k, v in sorted(menu.items())}
 
 		_USB_OPTIONS_CACHE[source] = {source: writable_controls}
 		return _USB_OPTIONS_CACHE[source]
@@ -370,6 +394,13 @@ def set_controls_usb(controls_by_source, camera_config_options=None):
 
 			# v4l2 controls are integers; config values arrive as floats.
 			value = int(round(_clamp(source, canonical_name, value, bounds)))
+			allowed = bounds.get("values")
+			if allowed and value not in allowed:
+				# Not one of the menu's values: the nearest one (the lower on a tie)
+				nearest = min(allowed, key=lambda v: (abs(v - value), v))
+				logger.info(f"[{source}] {canonical_name}: {value} is not one of the camera's values "
+							f"({', '.join(map(str, allowed))}); using {nearest}")
+				value = nearest
 			to_set[real_name] = (canonical_name, value)
 
 		failed = _set_usb_ctrls(source, {name: value for name, (_, value) in to_set.items()})

@@ -233,6 +233,10 @@ installed (the plugin does this).
 - `balance` and `autofocus` switch the automatic mode on (1) or off (0).
 - `autoexposure` uses the driver's menu values. On many UVC cameras, 1 is
   manual and 3 is automatic (aperture priority).
+- A menu control (such as `autoexposure`) only takes the values its menu has -
+  the settings page shows them, e.g. "1 or 3", with their names on hover. Any
+  other value is changed to the nearest of them (e.g. 0 to 1), with a note in
+  the log.
 
 ### USB settings
 
