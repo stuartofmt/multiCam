@@ -1,8 +1,8 @@
 <script setup>
 // Settings page: edits the cameras, port and log level kept in multiCam's settings file.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { mdiArrowLeft, mdiContentSave, mdiPlus, mdiUndo, mdiVideoOff } from "@mdi/js";
-import { getSettings, saveSettings } from "../api.js";
+import { mdiArrowLeft, mdiContentSave, mdiPlus, mdiRestart, mdiUndo, mdiVideoOff } from "@mdi/js";
+import { getSettings, restart, saveSettings } from "../api.js";
 import { keysFor, sortByName, unusedSource } from "./cameraLogic.js";
 import CameraCard from "./CameraCard.vue";
 
@@ -14,6 +14,9 @@ const logLevel = ref("INFO");
 const port = ref("0");
 const loading = ref(true);
 const saving = ref(false);
+const restarting = ref(false);
+// How long to wait for multiCam to come back after a restart (finding and setting up the cameras takes a while)
+const RESTART_WAIT_SEC = 90;
 // { type: "error" | "success", lines: [...] }
 const message = ref(null);
 const messageBox = ref(null);
@@ -126,6 +129,51 @@ async function save() {
     }
 }
 
+// Restart multiCam to apply the saved settings, wait until the new run answers (on the port it said it will use),
+// then show its settings - on that port's page if the port changed.
+async function restartNow() {
+    restarting.value = true;
+    message.value = null;
+    const startedBefore = settings.value?.started_at;
+    let port;
+    try {
+        port = String((await restart()).port);
+    } catch (e) {
+        restarting.value = false;
+        showMessage("error", [`Could not restart multiCam: ${e.message}`]);
+        return;
+    }
+    const samePort = port === (window.location.port || (window.location.protocol === "https:" ? "443" : "80"));
+    const origin = samePort ? window.location.origin : `${window.location.protocol}//${window.location.hostname}:${port}`;
+
+    const deadline = Date.now() + RESTART_WAIT_SEC * 1000;
+    while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        try {
+            const response = await fetch(`${origin}/api/settings`, { cache: "no-store" });
+            const data = await response.json();
+            if (!response.ok || data.started_at === startedBefore || !data.cameras_started) {
+                continue;   // the old run has not stopped yet, or the new one is still starting its cameras
+            }
+        } catch {
+            continue;   // not answering yet
+        }
+        if (!samePort) {
+            window.location.href = `${origin}/settings`;
+            return;
+        }
+        await load();
+        restarting.value = false;
+        showMessage("success", ["multiCam has restarted - the saved settings are in use."]);
+        return;
+    }
+    restarting.value = false;
+    showMessage("error", [
+        `multiCam has not come back after ${RESTART_WAIT_SEC} seconds. Its log shows why ` +
+        "(and the address it is using, if that changed).",
+    ]);
+}
+
 function uniqueName() {
     const names = new Set(cameras.value.map((c) => c.name.trim()));
     let n = cameras.value.length + 1;
@@ -220,9 +268,27 @@ onBeforeUnmount(() => {
 
                 <p v-if="settings" class="text-medium-emphasis mb-4">Settings file: {{ settings.config_file }}</p>
 
-                <v-alert v-if="settings?.restart_required" type="warning" variant="tonal" class="mb-4">
-                    The settings have been saved. Restart multiCam (the plugin in DWC, or <code>sudo systemctl restart multicam</code> if installed standalone) for the changes to take effect.
-                    The Effective column still shows the values the cameras are running with.
+                <v-alert v-if="settings?.restart_required || restarting" type="warning" variant="tonal" class="mb-4">
+                    <template v-if="restarting">
+                        Restarting multiCam - this page carries on when it is back (finding and setting up the
+                        cameras can take a few seconds).
+                    </template>
+                    <template v-else>
+                        The settings have been saved. Restart multiCam for the changes to take effect.
+                        The Effective column still shows the values the cameras are running with.
+                    </template>
+                    <template #append>
+                        <v-btn
+                            color="warning"
+                            :prepend-icon="mdiRestart"
+                            :loading="restarting"
+                            :disabled="dirty"
+                            :title="dirty ? 'Save or discard your changes first' : 'Restart multiCam now'"
+                            @click="restartNow"
+                        >
+                            Restart now
+                        </v-btn>
+                    </template>
                 </v-alert>
 
                 <div aria-live="polite">

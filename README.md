@@ -58,8 +58,8 @@ In a standalone install:
 - the log and settings are kept next to `multiCam.py` (in the `dsf` folder),
   so find the address with `grep "View cameras at" dsf/multiCam.log` (Linux)
   or by opening `dsf\multiCam.log` (Windows);
-- multiCam runs until its window is closed or Ctrl+C is pressed: start it again
-  with `run.sh` / `run.bat` after saving settings;
+- multiCam runs until its window is closed or Ctrl+C is pressed; saved settings
+  are applied with **Restart now** on the settings page;
 - on Windows only USB cameras and network streams are available (see
   [USB on Windows](#usb-on-windows)).
 
@@ -111,8 +111,9 @@ settings page.
 To use a fixed port, enter it in the **Port** field on the settings page and
 press **Save**. The port must be between 1024 and 65535 and must not conflict
 with DWC or other plugins or applications. Set it to 0 (or leave it blank) to
-go back to picking a free port. Restart multiCam for a port change to take
-effect.
+go back to picking a free port. A port change takes effect when multiCam
+restarts - press **Restart now** on the settings page, and the page follows
+multiCam to the new port.
 
 ### Settings page
 
@@ -142,9 +143,11 @@ From the settings page you can:
 - Set the **log level**.
 
 Press **Save** to write the changes, or **Discard changes** to go back to the
-saved values. Saved changes take effect when the plugin is restarted; until
-then a banner is shown, and the Effective column still shows the values the
-cameras are running with.
+saved values. Saved changes take effect when multiCam restarts: a banner then
+offers **Restart now**, which restarts multiCam on the spot (it is back within
+a few seconds, while it finds and sets up the cameras) and refreshes the page
+with the new values. Until then the Effective column still shows the values the
+cameras are running with. Open camera stream pages reconnect by themselves.
 
 **Note that the cameras details are display in order of the camera name (alphabetically - case sensitive).  
 

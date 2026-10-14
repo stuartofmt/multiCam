@@ -14,12 +14,19 @@ const error = ref("");
 const paused = ref(false);
 // Changed whenever the streams are reconnected - see streamSrc.
 const connection = ref(Date.now());
+// Which run of multiCam the cameras came from: a restart (e.g. to apply settings) changes it
+let startedAt = null;
+// How often to check for a restart. A browser keeps showing the last frame of a stream whose server went away,
+// without an error, so a restart is noticed by asking.
+const RESTART_CHECK_SEC = 5;
+let restartCheck = null;
 
 async function loadCameras() {
     loading.value = true;
     error.value = "";
     try {
         const data = await getCameras();
+        startedAt = data.started_at ?? null;
         cameras.value = (data.cameras || []).map((camera) => ({
             name: camera.name,
             streamUrl: cameraUrl(camera.name, camera.stream),
@@ -47,6 +54,22 @@ function streamSrc(camera) {
     return url.href;
 }
 
+// A stream that ends (e.g. multiCam restarting to apply settings) is tried again - with the camera list read
+// again, as the cameras may have changed - every RETRY_SEC until it is back.
+const RETRY_SEC = 3;
+let retryTimer = null;
+
+function onStreamError() {
+    if (paused.value || retryTimer) {
+        return;
+    }
+    retryTimer = setTimeout(async () => {
+        retryTimer = null;
+        await loadCameras();
+        connection.value = Date.now();
+    }, RETRY_SEC * 1000);
+}
+
 function onVisibilityChange() {
     if (document.hidden) {
         // WebKit (all iOS browsers) keeps an MJPEG connection open when an <img> src changes;
@@ -63,12 +86,32 @@ function onVisibilityChange() {
     }
 }
 
+// multiCam restarted (or was unreachable and is back): read the cameras again and reconnect the streams
+async function checkForRestart() {
+    if (paused.value || loading.value) {
+        return;
+    }
+    let data;
+    try {
+        data = await getCameras();
+    } catch {
+        return;   // not answering (restarting): try again next time
+    }
+    if ((data.started_at ?? null) !== startedAt) {
+        await loadCameras();
+        connection.value = Date.now();
+    }
+}
+
 onMounted(() => {
     document.addEventListener("visibilitychange", onVisibilityChange);
     loadCameras();
+    restartCheck = setInterval(checkForRestart, RESTART_CHECK_SEC * 1000);
 });
 
 onBeforeUnmount(() => {
+    clearTimeout(retryTimer);
+    clearInterval(restartCheck);
     document.removeEventListener("visibilitychange", onVisibilityChange);
 });
 </script>
@@ -115,7 +158,7 @@ onBeforeUnmount(() => {
                                 <a :href="camera.snapshotUrl" target="_blank" rel="noopener noreferrer">{{ camera.snapshotUrl }}</a>
                             </div>
                         </v-card-text>
-                        <img class="camera-image" :src="streamSrc(camera)" :alt="camera.name">
+                        <img class="camera-image" :src="streamSrc(camera)" :alt="camera.name" @error="onStreamError">
                     </v-card>
                 </div>
             </v-container>

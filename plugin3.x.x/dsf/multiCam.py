@@ -23,8 +23,11 @@ import time
 import uvicorn
 import socket
 import signal
+import subprocess
+import logging
 
-from routes import app, start_cameras, set_settings_state
+from routes import app, start_cameras, stop_cameras, set_settings_state, set_restart_handler
+from camera_platform import IS_WINDOWS
 from settings_config import ensure_settings_file
 
 from logger_module import (setup_log, set_log_level)
@@ -70,6 +73,27 @@ def validate_port(port=0, start_port=17800, max_tries=100):
 
 	logger.info(f'''IP address {this_ip_address} with port {port} is available''')
 	return this_ip_address, port
+
+
+def restart_program():
+	"""
+	Restart multiCam with the same command line, to apply saved settings (from the settings page). The cameras are
+	stopped first, so the new run can open them; the web server's socket closes with this process.
+	Linux: the process is replaced (os.execv), keeping its process id - DSF, which started the plugin, sees no change.
+	Windows: os.execv does not quote arguments (a path with a space breaks), so a new process is started and this
+	one ends; it keeps the console window.
+	"""
+	logger.info('Restarting multiCam to apply the settings')
+	try:
+		stop_cameras()
+	except Exception as e:
+		logger.warning(f'Could not stop every camera before restarting: {e}')
+	logging.shutdown()   # flush the log file
+	command = [sys.executable] + sys.orig_argv[1:]   # the interpreter's own options (e.g. -u) too
+	if IS_WINDOWS:
+		subprocess.Popen(command)
+		os._exit(0)
+	os.execv(sys.executable, command)
 
 
 def force_quit(code):
@@ -143,6 +167,9 @@ if __name__ == "__main__":
 	except Exception as e:
 		logger.info(f'{e}')
 		force_quit(1)
+
+	# The settings page can restart multiCam to apply saved settings
+	set_restart_handler(restart_program)
 
 	# Values shown on the settings page
 	try:

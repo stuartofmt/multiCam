@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import time
 from typing import Optional
 
@@ -122,6 +123,26 @@ camera_urls = {}
 
 def start_cameras():
     manager.start()
+    # The cameras are running: the settings page waits for this after a restart
+    settings_state["cameras_started"] = True
+
+
+def stop_cameras():
+    """Stop every camera, releasing its device (e.g. before multiCam restarts itself)."""
+    manager.stop()
+
+
+# When this run of multiCam started: the settings page sees it change once a restart has finished.
+STARTED_AT = time.time()
+# Restarts multiCam (set by multiCam.py, see set_restart_handler); None until then.
+_restart_handler = None
+# Seconds between answering /api/restart and restarting, so the answer reaches the page first.
+RESTART_DELAY_SEC = 0.5
+
+
+def set_restart_handler(handler):
+    global _restart_handler
+    _restart_handler = handler
 
 
 # Filled in by set_settings_state once the cameras are configured at startup.
@@ -135,6 +156,8 @@ settings_state = {
     "port": None,
     # The config file was saved since startup, so the running cameras don't match it.
     "restart_required": False,
+    # start_cameras has run: the cameras are added and started (the web server answers a little before that)
+    "cameras_started": False,
 }
 
 
@@ -193,6 +216,8 @@ async def get_settings():
         "schema": settings_schema(),
         "setting_limits": SETTING_LIMITS,
         "restart_required": settings_state["restart_required"],
+        "started_at": STARTED_AT,
+        "cameras_started": settings_state["cameras_started"],
     }
 
 
@@ -239,9 +264,30 @@ async def save_settings(request: SettingsRequest):
     return {"status": "success"}
 
 
+@app.post("/api/restart")
+async def restart():
+    """
+    Restart multiCam to apply saved settings. Answers first, with the port the new run will listen on (the
+    configured one, else the one in use now - with port 0 a free one is picked again, normally the same), then
+    restarts.
+    """
+    if _restart_handler is None:
+        return JSONResponse({"status": "error", "message": "Restarting is not available yet"}, status_code=503)
+    port = settings_state["port"]
+    try:
+        port = read_port(settings_state["config_file"]) or port
+    except Exception:
+        pass
+    logger_module.logger.info("Restart requested from the settings page")
+    threading.Timer(RESTART_DELAY_SEC, _restart_handler).start()
+    return {"status": "success", "port": port}
+
+
 @app.get("/api/cameras")
 async def list_cameras():
     return {
+        # Changes when multiCam restarts: the camera streams page then reconnects
+        "started_at": STARTED_AT,
         "cameras": [
             {"name": name, **camera_urls[name]}
             for name in manager.cameras

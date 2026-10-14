@@ -31,3 +31,7 @@ export function saveSettings(payload) {
         body: JSON.stringify(payload),
     });
 }
+
+export function restart() {
+    return request("/api/restart", { method: "POST" });
+}
