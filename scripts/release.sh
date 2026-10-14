@@ -10,9 +10,10 @@
 #        - use this tag: pushes the branch, creates the tag and pushes it on its own
 #        - new tag:      tells you to update and commit plugin.json first, then exits
 #
-# With no plugin.json the repository is not a plugin: the Release workflow zips the whole repository as a
-# standalone ZIP, and the version comes from the tag. This script then shows the latest v* tag, asks for
-# the version to release and uses the tag v<version>.
+# With no plugin.json the repository is not a plugin: the Release workflow releases only its standalone ZIP,
+# which needs a standalone/ folder (made by Prep_and_Package's Prepare with "Create standalone" ticked), and
+# the version comes from the tag. This script then shows the latest v* tag, asks for the version to release and
+# uses the tag v<version>.
 #
 # Pushing the tag starts the Release workflow (.github/workflows/release.yml). Approve the run in the
 # repository's Actions tab when it pauses at dwc-release-approval.
@@ -38,8 +39,10 @@ fi
 
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 if [ -z "$MANIFEST" ]; then
-	# No plugin.json: a standalone release of the whole repository, its version only in the tag
-	echo "No plugin.json in this repository: it will be released as a standalone ZIP of the repository."
+	# No plugin.json: only a standalone ZIP is released (from standalone/), its version only in the tag
+	[ -d standalone ] || { echo "Error: there is no plugin.json and no standalone/ folder, so there is nothing to release."
+		echo "Run Prepare in Prep_and_Package with \"Create standalone\" ticked, commit standalone/ and try again."; exit 1; }
+	echo "No plugin.json in this repository: only its standalone ZIP (standalone/ folder) will be released."
 	LATEST=$(git tag -l 'v*' --sort=-v:refname | head -n1)
 	echo "Latest tag: ${LATEST:-none}"
 	read -rp "Version to release (e.g. 1.2.3): " VERSION

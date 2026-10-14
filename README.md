@@ -69,9 +69,8 @@ Manage settings at http://192.168.1.50:17800/settings
 
 The log also lists the stream and snapshot URL of each camera.
 
-The port can change between restarts when it is set to 0 (the default) or the
-configured port is already in use, so check the logfile if a page can no longer
-be reached.
+It is usually best to select a port number so it remains the same between restarts.  If it is set to 0 (the default) or the
+configured port is already in use - the program will select an available port.
 
 ## Configuration
 

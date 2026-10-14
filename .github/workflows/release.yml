@@ -6,12 +6,12 @@ name: Release
 #   It builds the installable plugin ZIP file on GitHub's servers, compiling the plugin against the
 #   DuetWebControl (DWC) source code. You do not need to build anything on your own computer.
 #   A plugin whose plugin.json has no dwcVersion has no DWC interface to compile, so it is simply
-#   zipped instead, as plugin_tools does (see "Plugins without a DWC interface" below). A repository
-#   with no plugin.json at all is not a plugin: the whole repository is zipped as a standalone ZIP, with
-#   no build and no DWC dependency (see "Repositories without a plugin.json" below). Either way,
-#   files listed in scripts/release-exclude.txt are left out of the ZIP (see "Leaving files out").
-#   A plugin with a standalone/ folder is ALSO released as a standalone ZIP that runs without DWC
-#   (see "Also releasing a standalone ZIP" below).
+#   zipped instead, as plugin_tools does (see "Plugins without a DWC interface" below). Files listed in
+#   scripts/release-exclude.txt are left out of the ZIP (see "Leaving files out").
+#   A standalone/ folder at the top of the repository (made by Prep_and_Package's Prepare with "Create
+#   standalone" ticked) ALSO releases a standalone ZIP that runs without DWC - see "The standalone ZIP"
+#   below. A repository with no plugin.json is not a plugin: only its standalone ZIP is released, so it
+#   needs a standalone/ folder - with neither, the run stops with an error.
 #
 #   The workflow can be started in two different ways, and they produce different results:
 #
@@ -132,39 +132,41 @@ name: Release
 # Repositories without a plugin.json (standalone)
 # ---------------------------------------------------------------------------------------------------
 #   If there is no plugin.json anywhere in the repository, it is not a DWC plugin (e.g. a standalone
-#   program). The workflow does not download or build DWC: it zips the whole repository (without the
-#   files left out, below), with its files at the top of the ZIP.
+#   program). It is released only as its standalone ZIP (see "The standalone ZIP" below), so it needs a
+#   standalone/ folder - without one the run stops with an error. Nothing is built against DWC.
 #     - The version comes from the tag: v<version>, e.g. v1.2.3 (v1.2.3-rc.1 is fine). A tag that is not
 #       v and a version number stops the run.
 #     - The ZIP is <repository name>-<version>.zip, e.g. MyTool-1.2.3.zip (a manual run:
 #       <repository name>-<branch>-<commit>.zip).
-#     - Besides the usual list, .github/ and the workflow's own scripts (scripts/manifest.mjs,
-#       prune-release.mjs, release-*.mjs, release-*.txt, release.sh) are always left out, and folders
-#       left empty are dropped.
 #     - The release title has the branch being released in brackets: v1.2.3 (main) — "<title>".
 #     - The release notes say it is a standalone release that does not depend on any DWC version.
 #   ./scripts/release.sh asks for the version (showing the latest v* tag) and creates and pushes v<version>.
-#   A standalone/ folder in such a repository is just part of the ZIP - it does not trigger anything.
 #
 # ---------------------------------------------------------------------------------------------------
-# Also releasing a standalone ZIP (standalone/ folder)
+# The standalone ZIP (standalone/ folder)
 # ---------------------------------------------------------------------------------------------------
-#   A plugin that can also run without DWC (e.g. an SBC plugin that serves its own web page) can be
-#   released both ways at once: add a standalone/ folder at the top of the repository. The plugin ZIP is
-#   built exactly as above, and scripts/release-standalone.mjs ALSO builds
-#   standalone/standalone-<id>-<version>.zip, which is attached to the same Release (and to manual runs'
-#   artifact). It is made from:
-#     1. the Code folder, without what the plugin ZIP leaves out (see "Leaving files out") and node_modules/;
-#     2. without what standalone/exclude.txt lists as well - same pattern rules, relative to the Code
-#        folder - e.g. plugin.json and the plugin's sd/ files;
-#     3. plus everything in standalone/ (e.g. install.sh, a service file, a README), added at the top of
-#        the ZIP - except exclude.txt, .gitignore and ZIP files.
-#   The version is plugin.json's, and the tag is the plugin's - one tag releases both ZIPs. The ZIP is
-#   built in the workflow's own checkout and never committed. To try it locally (it is written to
-#   standalone/ - add standalone/*.zip to .gitignore):  node scripts/release-standalone.mjs
-#   (--list shows what would go in it). The release notes say how to install it, with
-#   "sudo bash install.sh" if standalone/ has an install.sh. The standalone/ folder is never in the
-#   plugin ZIP, even when plugin.json is at the repository root.
+#   A standalone/ folder at the top of the repository releases the program packaged to run on its own,
+#   without DWC. Prep_and_Package's Prepare makes the folder when "Create standalone" is ticked: the
+#   run.sh / run.bat launchers, source.txt and exclude.txt. scripts/release-standalone.mjs builds the ZIP
+#   into standalone/ and it is attached to the Release (and to a manual run's artifact):
+#     - for a plugin, standalone-<id>-<version>.zip next to the plugin ZIP (plugin.json's version and
+#       tag - one tag releases both);
+#     - with no plugin.json, <repository name>-<version>.zip as the only ZIP (see above).
+#   It is made from:
+#     1. the source folder - the first line of standalone/source.txt (the project folder Prepare worked on,
+#        relative to the repository root), else the folder holding plugin.json, else the repository root -
+#        without __pycache__/, venv/, .git/, *.pyc, *.log, node_modules/ and what scripts/release-exclude.txt
+#        lists. From the repository root, .github/, the workflow's own scripts and standalone/ are left out too;
+#     2. without what standalone/exclude.txt lists as well - same pattern rules, relative to the source
+#        folder - e.g. a plugin's plugin.json and sd/ files;
+#     3. plus everything in standalone/ (e.g. run.sh, run.bat), added at the top of the ZIP - except
+#        source.txt, exclude.txt, .gitignore and ZIP files.
+#   Folders left empty are dropped. The ZIP is built in the workflow's own checkout and never committed.
+#   To try it locally (written to standalone/ - add standalone/*.zip to .gitignore):
+#   node scripts/release-standalone.mjs  (--list shows what would go in it). The release notes say how to
+#   start it, with the launchers in standalone/. The standalone/ folder is never in the plugin ZIP, even when
+#   plugin.json is at the repository root. Release from one branch only: commit standalone/ only on that
+#   branch (a merge into another branch brings it along - remove it there with git rm -r standalone).
 #
 # ---------------------------------------------------------------------------------------------------
 # Leaving files out
@@ -182,12 +184,11 @@ name: Release
 # ---------------------------------------------------------------------------------------------------
 #   1. resolve-dwc - read plugin.json, check the tag matches its version and dwcVersion, see if a Release already
 #                    exists, and choose the DWC version (none with no dwcVersion - the plugin is zipped -
-#                    or with no plugin.json - the repository is zipped as a standalone ZIP).
+#                    or with no plugin.json - only the standalone ZIP is released).
 #   2. approval    - pause until someone approves at the dwc-release-approval environment.
 #   3. build       - copy the plugin folder and leave out the excluded files, then download DWC and build
-#                    the ZIP from the copy with DWC's scripts/build-plugin.js - or, with no dwcVersion
-#                    or no plugin.json, zip the copy. With a standalone/ folder, also build the
-#                    standalone ZIP.
+#                    the ZIP from the copy with DWC's scripts/build-plugin.js - or, with no dwcVersion,
+#                    zip the copy. With a standalone/ folder, build the standalone ZIP.
 #   4. output      - automatic: publish the GitHub Release. Manual: provide the ZIP as an artifact.
 #
 # ---------------------------------------------------------------------------------------------------
@@ -271,8 +272,8 @@ jobs:
             return matches;
           }
 
-          // No plugin.json anywhere: not a plugin. The whole repository is zipped as a standalone ZIP,
-          // named after the repository, with the version taken from the tag - no DWC build or release.
+          // No plugin.json anywhere: not a plugin, so only its standalone ZIP is released (which needs a standalone/
+          // folder), named after the repository, with the version taken from the tag - no DWC build.
           const manifestPath = existsSync("plugin.json")
             ? "plugin.json"
             : (() => {
@@ -282,6 +283,12 @@ jobs:
                 return relative(".", matches[0]);
               })();
           const standalone = !manifestPath;
+          // A standalone/ folder at the top is what makes a standalone ZIP (scripts/release-standalone.mjs) - next to
+          // the plugin ZIP, or on its own with no plugin.json. With neither there is nothing to release.
+          const standaloneBuild = existsSync("standalone") && statSync("standalone").isDirectory();
+          if (standalone && !standaloneBuild) {
+            throw new Error("Nothing to release: there is no plugin.json and no standalone/ folder. For a program that is not a DWC plugin, run Prepare in Prep_and_Package with \"Create standalone\" ticked and commit the standalone/ folder it makes.");
+          }
           const tag = process.env.GITHUB_REF.startsWith("refs/tags/")
             ? process.env.GITHUB_REF.slice("refs/tags/".length)
             : "";
@@ -307,10 +314,8 @@ jobs:
           // (as plugin_tools does), its tag has no -dwc suffix and no DWC release is needed.
           const needsBuild = !standalone && manifest.dwcVersion !== undefined && manifest.dwcVersion !== null
             && String(manifest.dwcVersion).trim() !== "";
-          const packageMode = standalone ? "standalone" : needsBuild ? "build" : "zip";
-          // A plugin with a standalone/ folder is also released as a standalone ZIP (scripts/release-standalone.mjs).
-          // Without a plugin.json the whole repository is already the standalone ZIP, so the folder is no trigger.
-          const standaloneBuild = !standalone && existsSync("standalone") && statSync("standalone").isDirectory();
+          // The plugin ZIP: built with DWC, zipped (no dwcVersion), or none (no plugin.json - only the standalone ZIP)
+          const packageMode = standalone ? "none" : needsBuild ? "build" : "zip";
           if (needsBuild && typeof manifest.dwcVersion !== "string") {
             throw new Error(`${manifestPath} dwcVersion must be a string, e.g. "3.7".`);
           }
@@ -443,7 +448,7 @@ jobs:
           console.log(`Manifest: ${manifestPath} (plugin ${manifest.version}, required DWC ${manifest.dwcVersion})`);
           console.log(`Selected DuetWebControl release: ${selected}`);
           } else if (standalone) {
-            console.log(`No plugin.json - ${manifest.id} ${manifest.version} will be released as a standalone ZIP of the repository.`);
+            console.log(`No plugin.json - only the standalone ZIP of ${manifest.id} ${manifest.version} will be released (standalone/ folder).`);
             if (process.env.DWC_REF_OVERRIDE.trim()) {
               console.log(`::warning::dwc-ref "${process.env.DWC_REF_OVERRIDE}" is ignored - there is no plugin.json, so nothing is built against DWC.`);
             }
@@ -459,7 +464,7 @@ jobs:
               ? `\n\nNo published release currently exists for \`${tag}\`. Approve the \`dwc-release-approval\` environment to continue, or reject the deployment to stop this run.`
               : "";
           appendFileSync(process.env.GITHUB_OUTPUT, `manifest=${manifestPath}\nplugin-name=${manifest.id}\nplugin-version=${manifest.version}\nplugin-dwc-version=${needsBuild ? manifest.dwcVersion : ""}\npackage-mode=${packageMode}\ndwc-ref=${selected}\nrelease-exists=${existingRelease ? "true" : "false"}\nrelease-url=${existingRelease?.html_url ?? ""}\nmake-latest=${channel === "latest"}\nstandalone-build=${standaloneBuild}\n`);
-          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Release preflight\n\n${standalone ? `- No plugin.json: standalone release of \`${manifest.id}\`\n- Version: \`${manifest.version}\`${tag ? " (from the tag)" : " (test build)"}\n` : `- Plugin manifest: \`${manifestPath}\`\n- Plugin version: \`${manifest.version}\`\n`}- Release channel: \`${channel}\` (tag \`${expectedTag}\`${channel === "latest" ? ", marked Latest" : ", not marked Latest"})\n${needsBuild ? `- Packaging: built with DWC's plugin builder\n- Required DWC version: \`${manifest.dwcVersion}\`\n- Selected DWC release: \`${selected}\`` : standalone ? `- Packaging: the repository zipped as \`${manifest.id}-${manifest.version}.zip\` - no DWC build` : "- Packaging: zipped - plugin.json has no dwcVersion, so there is no DWC interface to build"}${standaloneBuild ? `\n- Also: \`standalone-${manifest.id}-${manifest.version}.zip\`, built from the \`standalone/\` folder (runs without DWC)` : ""}\n- Left out of the ZIP: see the \"Leave out excluded files\" step (scripts/release-exclude.txt)\n${releaseSummary}\n`);
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Release preflight\n\n${standalone ? `- No plugin.json: standalone release of \`${manifest.id}\` (standalone/ folder)\n- Version: \`${manifest.version}\`${tag ? " (from the tag)" : " (test build)"}\n` : `- Plugin manifest: \`${manifestPath}\`\n- Plugin version: \`${manifest.version}\`\n`}- Release channel: \`${channel}\` (tag \`${expectedTag}\`${channel === "latest" ? ", marked Latest" : ", not marked Latest"})\n${needsBuild ? `- Packaging: built with DWC's plugin builder\n- Required DWC version: \`${manifest.dwcVersion}\`\n- Selected DWC release: \`${selected}\`` : standalone ? `- Packaging: the standalone ZIP \`${manifest.id}-${manifest.version}.zip\` only - no plugin ZIP, no DWC build` : "- Packaging: zipped - plugin.json has no dwcVersion, so there is no DWC interface to build"}${standaloneBuild && !standalone ? `\n- Also: \`standalone-${manifest.id}-${manifest.version}.zip\`, built from the \`standalone/\` folder (runs without DWC)` : ""}\n- Left out of the ZIP: see the \"Leave out excluded files\" and \"Build standalone ZIP\" steps (scripts/release-exclude.txt, standalone/exclude.txt)\n${releaseSummary}\n`);
           NODE
 
   build:
@@ -483,12 +488,12 @@ jobs:
       - uses: actions/setup-node@v6
         with: { node-version: 24 }
 
-      # Copy the Code folder (the one holding plugin.json - the whole repository if there is none) to
-      # $RUNNER_TEMP/plugin-src and remove from the copy what scripts/release-exclude.txt lists, plus
-      # __pycache__/, venv/, .git/, *.pyc and *.log (as plugin_tools does) - and for a standalone release,
-      # .github/ and the workflow's own scripts. The build or zip below uses the copy, so the checkout - including scripts/,
-      # which later steps run - is never changed.
+      # Copy the Code folder (the one holding plugin.json) to $RUNNER_TEMP/plugin-src and remove from the copy what
+      # scripts/release-exclude.txt lists, plus __pycache__/, venv/, .git/, *.pyc and *.log (as plugin_tools does).
+      # The build or zip below uses the copy, so the checkout - including scripts/, which later steps run - is never
+      # changed. Not with no plugin.json: there is no plugin ZIP then.
       - name: Leave out excluded files
+        if: needs.resolve-dwc.outputs.package-mode != 'none'
         working-directory: plugin
         env:
           MANIFEST: ${{ needs.resolve-dwc.outputs.manifest }}
@@ -591,38 +596,21 @@ jobs:
           unzip -Z1 "$ZIP" | grep -qx plugin.json || { echo "::error::plugin.json is not at the top of $ZIP."; exit 1; }
           unzip -l "$ZIP"
 
-      # No plugin.json: not a plugin, so nothing is built and there is no DWC dependency - the repository
-      # (the copy, without the excluded files) is zipped as it is: <repository>-<version>.zip, e.g.
-      # MyTool-1.2.3.zip, with the version from the tag. Folders left empty by the exclusions are dropped.
-      - name: Zip standalone ZIP (no plugin.json)
-        if: needs.resolve-dwc.outputs.package-mode == 'standalone'
-        env:
-          PLUGIN_VERSION: ${{ needs.resolve-dwc.outputs.plugin-version }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/plugin-zip"
-          ZIP="$RUNNER_TEMP/plugin-zip/${PLUGIN_NAME:?}-${PLUGIN_VERSION:?}.zip"
-          find "$RUNNER_TEMP/plugin-src" -mindepth 1 -type d -empty -delete
-          if [ -z "$(ls -A "$RUNNER_TEMP/plugin-src")" ]; then
-            echo "::error::Nothing to zip: every file was left out (see the \"Leave out excluded files\" step)."
-            exit 1
-          fi
-          (cd "$RUNNER_TEMP/plugin-src" && zip -r -X -q "$ZIP" .)
-          unzip -l "$ZIP"
-
-      # A plugin with a standalone/ folder is also released as a standalone ZIP that runs without DWC:
-      # scripts/release-standalone.mjs builds standalone/standalone-<id>-<version>.zip from the checkout (its own
-      # copy of the Code folder - not the copy above, which a DWC build adds files to), and it is attached
-      # to the Release (and to a manual run's artifact) next to the plugin ZIP.
+      # A standalone/ folder: scripts/release-standalone.mjs builds the standalone ZIP that runs without DWC -
+      # standalone-<id>-<version>.zip next to the plugin ZIP, or <name>-<version>.zip on its own with no plugin.json -
+      # into standalone/ in the checkout (from its own copy of the source folder, not the copy above, which a DWC build
+      # adds files to). It is attached to the Release (and to a manual run's artifact).
       - name: Build standalone ZIP (standalone/ folder)
         if: needs.resolve-dwc.outputs.standalone-build == 'true'
         working-directory: plugin
         env:
           MANIFEST: ${{ needs.resolve-dwc.outputs.manifest }}
+          PLUGIN_VERSION: ${{ needs.resolve-dwc.outputs.plugin-version }}
         run: |
           node scripts/release-standalone.mjs
           mkdir -p "$RUNNER_TEMP/standalone-assets"
-          cp -- standalone/standalone-*.zip "$RUNNER_TEMP/standalone-assets/"
-          unzip -l "$RUNNER_TEMP"/standalone-assets/standalone-*.zip
+          cp -- standalone/*.zip "$RUNNER_TEMP/standalone-assets/"
+          unzip -l "$RUNNER_TEMP"/standalone-assets/*.zip
 
       # Release body = Conventional-Commit changelog (see CONTRIBUTING.md) + a footer with install
       # instructions, the DWC version built against, and the community-gallery call-to-action.
@@ -681,14 +669,14 @@ jobs:
           body: ${{ steps.changelog.outputs.body }}
           files: |
             ${{ runner.temp }}/plugin-zip/*.zip
-            ${{ runner.temp }}/standalone-assets/standalone-*.zip
+            ${{ runner.temp }}/standalone-assets/*.zip
           fail_on_unmatched_files: false
 
       - name: Upload ZIP as an artifact (manual runs)
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ env.PLUGIN_NAME }}-${{ needs.resolve-dwc.outputs.package-mode == 'standalone' && 'standalone' || 'plugin' }}
+          name: ${{ env.PLUGIN_NAME }}-${{ needs.resolve-dwc.outputs.package-mode == 'none' && 'standalone' || 'plugin' }}
           path: |
             ${{ runner.temp }}/plugin-zip/*.zip
-            ${{ runner.temp }}/standalone-assets/standalone-*.zip
+            ${{ runner.temp }}/standalone-assets/*.zip

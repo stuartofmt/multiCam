@@ -7,8 +7,8 @@
  *   3. the shallowest plugin.json in a subfolder (alphabetical within a depth), skipping .git,
  *      node_modules and venv
  *
- * A repository with no plugin.json at all is not a plugin: the release workflow then zips the whole
- * repository as a standalone ZIP (see isStandalone and standaloneName).
+ * A repository with no plugin.json at all is not a plugin: it is released only as a standalone ZIP, which
+ * needs a standalone/ folder (see isStandalone, hasStandaloneBuild and standaloneSource).
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -44,14 +44,14 @@ export function manifestPath() {
 	return path;
 }
 
-/** Whether the repository has no plugin.json: it is released as a standalone ZIP of the whole repository. */
+/** Whether the repository has no plugin.json: it is not a plugin, so it is released only as a standalone ZIP. */
 export function isStandalone() {
 	return !findManifestPath();
 }
 
 /**
- * The name of a standalone ZIP (<name>-<version>.zip): the repository's name - from GitHub Actions'
- * GITHUB_REPOSITORY, else the git remote "origin", else the repository folder's name.
+ * The name of a repository with no plugin.json (its standalone ZIP is <name>-<version>.zip): the repository's
+ * name - from GitHub Actions' GITHUB_REPOSITORY, else the git remote "origin", else the repository folder's name.
  */
 export function standaloneName() {
 	const fromRepo = process.env.GITHUB_REPOSITORY?.split("/")[1];
@@ -66,17 +66,59 @@ export function standaloneName() {
 	return basename(repoRoot);
 }
 
-/** A plugin that is also released as a standalone ZIP keeps the standalone files in this folder. */
+/**
+ * The standalone/ folder at the top of the repository is what makes a standalone ZIP (see
+ * ./release-standalone.mjs). Prep_and_Package's Prepare makes it with "Create standalone" ticked.
+ */
 export const STANDALONE_DIR = "standalone";
 
-/**
- * Whether a standalone ZIP is built as well as the plugin ZIP: the repository has a plugin.json and a
- * standalone/ folder at its top (see ./release-standalone.mjs). A repository with no plugin.json is already
- * released as a standalone ZIP of the whole repository, so its standalone/ folder is not a trigger.
- */
+/** Whether a standalone ZIP is released: the repository has a standalone/ folder at its top. */
 export function hasStandaloneBuild() {
 	const dir = join(repoRoot, STANDALONE_DIR);
-	return !isStandalone() && existsSync(dir) && statSync(dir).isDirectory();
+	return existsSync(dir) && statSync(dir).isDirectory();
+}
+
+/**
+ * The folder the standalone ZIP is made from, relative to the repository root ("." for the root): the first
+ * line of standalone/source.txt (written by Prepare: the project folder), else the folder holding plugin.json,
+ * else the repository root. Throws if it is not a folder inside the repository.
+ */
+export function standaloneSource() {
+	const file = join(repoRoot, STANDALONE_DIR, "source.txt");
+	let rel = existsSync(file)
+		? readFileSync(file, "utf8").split(/\r?\n/).map((l) => l.replace(/#.*/, "").trim()).find(Boolean)
+		: undefined;
+	if (rel === undefined) rel = isStandalone() ? "." : dirname(manifestPath());
+	rel = rel.replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, "") || ".";
+	const full = join(repoRoot, rel);
+	if (rel.split("/").includes("..") || !existsSync(full) || !statSync(full).isDirectory()) {
+		throw new Error(`${STANDALONE_DIR}/source.txt names "${rel}", which is not a folder in the repository.`);
+	}
+	return rel;
+}
+
+/**
+ * The standalone ZIP's file name. A plugin's: standalone-<id>-<version>.zip, next to its plugin ZIP. A repository
+ * with no plugin.json has only this ZIP: <name>-<version>.zip.
+ */
+export function standaloneZipName(version, manifest = isStandalone() ? null : readManifest()) {
+	return manifest ? `standalone-${manifest.id}-${version ?? manifest.version}.zip` : `${standaloneName()}-${version}.zip`;
+}
+
+/**
+ * The version of a repository with no plugin.json: PLUGIN_VERSION (the release workflow sets it from the tag),
+ * else the newest v* tag, else "dev".
+ */
+export function standaloneVersion() {
+	if (process.env.PLUGIN_VERSION) return process.env.PLUGIN_VERSION;
+	try {
+		const tag = execFileSync("git", ["-C", repoRoot, "describe", "--tags", "--abbrev=0", "--match", "v*"],
+			{ encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+		if (tag) return tag.replace(/^v/, "");
+	} catch {
+		// no git, or no v* tag
+	}
+	return "dev";
 }
 
 /** The parsed plugin.json. */

@@ -32,3 +32,6 @@ node_modules/
 
 # Standalone ZIP built locally by scripts/release-standalone.mjs
 standalone/*.zip
+
+# Standalone ZIP: commit the launchers, not the ZIPs built locally (added by Prep_and_Package)
+!standalone/run.sh
