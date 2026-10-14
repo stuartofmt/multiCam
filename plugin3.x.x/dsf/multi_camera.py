@@ -308,32 +308,6 @@ class CameraStream(ClientTracking):
 				self._apply_opencv_controls()
 
 		#
-		# Attempt to apply supported camera properties.
-		# Some devices reject unsupported or unavailable controls;
-		# in that case, ignore the setting instead of failing startup.
-		#
-		# for prop, value in (
-		#     (cv2.CAP_PROP_BRIGHTNESS, float(self.brightness)),
-		#     (cv2.CAP_PROP_CONTRAST, float(self.contrast)),
-		#     (cv2.CAP_PROP_FOCUS, float(self.focus)),
-		# ):
-		#     try:
-		#         self.capture.set(prop, value)
-		#     except Exception:
-		#         logger_module.logger.debug(
-		#             f"Ignoring unsupported camera property {prop} for {self.source}"
-		#         )
-		#
-		# wb_temperature = getattr(cv2, "CAP_PROP_WB_TEMPERATURE", None)
-		# if wb_temperature is not None:
-		#     try:
-		#         self.capture.set(wb_temperature, float(self.balance))
-		#     except Exception:
-		#         logger_module.logger.debug(
-		#             f"Ignoring unsupported white balance setting for {self.source}"
-		#         )
-
-		#
 		# JPEG passthrough: serve the source's own JPEG without decoding
 		# or re-encoding. Only possible without rotation, which needs pixels.
 		# USB: CONVERT_RGB=0 returns the raw MJPG buffer.
