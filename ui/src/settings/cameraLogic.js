@@ -67,7 +67,7 @@ export function optionBounds(settings, camera, key) {
         return "camera not detected";
     }
     if (!capabilities.options) {
-        // Windows does not report control ranges: the value is passed to the camera as set
+        // Windows without DirectShow access does not report control ranges: the value is passed to the camera as set
         return isWindows(settings) ? "not reported on Windows" : "unknown - camera was busy";
     }
     return capabilities.options[key] || "not supported by camera";

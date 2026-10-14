@@ -26,6 +26,12 @@ try:
 except ImportError:
 	fcntl = None
 
+# USB camera names, formats and controls through DirectShow (Windows only; see windows_cameras)
+if IS_WINDOWS:
+	import windows_cameras
+else:
+	windows_cameras = None
+
 # --- CSI cameras via picamera2 (Raspberry Pi OS only) ---
 if PICAMERA_AVAILABLE:
 	from picamera2 import Picamera2
@@ -558,27 +564,31 @@ def validate_usb_camera_configs(cameras: Dict[str, dict], applied_options: Optio
 			continue
 		_add_applied_options(cam, (applied_options or {}).get(cam_name))
 		if IS_WINDOWS:
-			# Windows does not report a camera's formats: request MJPG at the configured size and fps and let the
-			# camera pick the nearest it supports (CameraStream logs what it got).
-			cam["format"] = _normalize_format(str(cam.get("format") or "MJPG"))
-			cam["width"], cam["height"] = int(cam["width"]), int(cam["height"])
-			cam["capturefps"] = cam["fps"]
-			continue
-		try:
 			source = cam.get("source")
-			output = _run_v4l2_ctl(source)
-			if output is None:
-				logger.info(f"[{cam_name}] Skipping format validation for {source}")
-				continue
-
-			formats = _parse_formats(output)
-
+			formats = _windows_formats(source)
 			if not formats:
-				logger.warning(f"[{cam_name}] No formats parsed for {source}; skipping")
+				# The formats could not be read: request MJPG at the configured size and fps and let the camera
+				# pick the nearest it supports (CameraStream logs what it got).
+				cam["format"] = _normalize_format(str(cam.get("format") or "MJPG"))
+				cam["width"], cam["height"] = int(cam["width"]), int(cam["height"])
+				cam["capturefps"] = cam["fps"]
 				continue
-		except Exception as e:
-			logger.info(f'Format parsing{e}')
-			raise
+		else:
+			try:
+				source = cam.get("source")
+				output = _run_v4l2_ctl(source)
+				if output is None:
+					logger.info(f"[{cam_name}] Skipping format validation for {source}")
+					continue
+
+				formats = _parse_formats(output)
+
+				if not formats:
+					logger.warning(f"[{cam_name}] No formats parsed for {source}; skipping")
+					continue
+			except Exception as e:
+				logger.info(f'Format parsing{e}')
+				raise
 		try:
 			# --- Step 1: format ---
 			requested_format = _normalize_format(str(cam.get("format", "")))
@@ -972,12 +982,59 @@ def highlight_print(msg):
 
 
 
+# Windows only: camera number -> name, from DirectShow
+_USB_NAMES = {}
+
+
+def _windows_formats(source):
+	"""Windows only: a camera's formats in _parse_formats' shape, from DirectShow ({} if they cannot be read)."""
+	if windows_cameras is None or not windows_cameras.AVAILABLE:
+		return {}
+	return windows_cameras.get_formats(source)
+
+
+def _windows_usb_options(number):
+	"""
+	Windows only: {option: {"min", "max", "default"}} of a camera, from DirectShow. Its controls are reset to
+	their defaults the first time (once per run, as on Linux); cached in _USB_OPTIONS_CACHE as on Linux.
+	"""
+	if number not in _USB_OPTIONS_CACHE:
+		_USB_OPTIONS_CACHE[number] = {number: windows_cameras.reset_controls(number)}
+	return _USB_OPTIONS_CACHE[number][number]
+
+
 def _find_usb_cameras_windows():
 	"""
-	Return the camera numbers ("0", "1", ...) of the cameras Windows has, found by opening each number in turn
-	(Windows has no list of them that OpenCV can read). Stops after WINDOWS_MISSES_TO_STOP numbers in a row
-	that do not open.
+	Return the camera numbers ("0", "1", ...) of the cameras Windows has: from DirectShow, with their names
+	(and control ranges, resetting the controls to their defaults as on Linux), or else found by opening each
+	number in turn, stopping after WINDOWS_MISSES_TO_STOP numbers in a row that do not open.
 	"""
+	if windows_cameras is not None and windows_cameras.AVAILABLE:
+		try:
+			cameras = windows_cameras.list_cameras()
+		except Exception as e:
+			logger.warning(f"Could not list cameras through DirectShow - {e}")
+			cameras = None
+		if cameras is not None:
+			camera_results = []
+			if cameras:
+				camera_results.append("USB camera(s) found (Windows camera numbers) with these options:")
+				for number, name in cameras:
+					_USB_NAMES[number] = name
+					camera_results.append(f"\n-- {number}: {name}")
+					try:
+						for control_name, bounds in _windows_usb_options(number).items():
+							camera_results.append(f"   {control_name}: min={bounds['min']}, max={bounds['max']}, default={bounds['default']}")
+					except Exception as e:
+						logger.debug(f"Could not query options for camera {number}: {e}")
+			else:
+				camera_results.append("No USB cameras were found.")
+			highlight_print(camera_results)
+			return [number for number, _ in cameras]
+	elif windows_cameras is not None:
+		logger.info(f"DirectShow access is not available ({windows_cameras._IMPORT_ERROR}); "
+					"camera names and control ranges will not be shown")
+
 	found = []
 	misses = 0
 	for number in range(WINDOWS_MAX_CAMERAS):
@@ -1323,10 +1380,25 @@ def configure_cameras(installed_cameras,camera_list,requested_options):
 				try:
 					# Get and set camera options for USB and Pi cameras - No need for streams
 					if details['cameratype'] == 'USB' and IS_WINDOWS:
-						# No v4l2-ctl: the options are passed to the camera through OpenCV when it starts, as set
-						applied_options[name] = dict(requested_options[name])
-						if requested_options[name]:
-							camera_list[name]['controls'] = dict(requested_options[name])
+						try:
+							if not windows_cameras.AVAILABLE:
+								raise RuntimeError("no DirectShow access")
+							# DirectShow: controls reset to their defaults, then the options set, within the camera's ranges
+							bounds = _windows_usb_options(details['source'])
+							to_set = {}
+							for option, value in requested_options[name].items():
+								if option not in bounds:
+									logger.debug(f"[{name}] {option}: not present on this camera")
+									continue
+								to_set[option] = _cast_option(option, _clamp(details['source'], option, value, bounds[option]))
+							applied_options[name] = windows_cameras.set_controls(details['source'], to_set)
+						except Exception as e:
+							# Without DirectShow (or if it fails for this camera) the options are passed to the camera
+							# through OpenCV when it starts, as set
+							logger.debug(f"[{name}] camera controls through OpenCV instead of DirectShow: {e}")
+							applied_options[name] = dict(requested_options[name])
+							if requested_options[name]:
+								camera_list[name]['controls'] = dict(requested_options[name])
 
 					elif details['cameratype'] == 'USB':
 						camera_options = get_camera_options_usb(name,details['source'])
@@ -1428,8 +1500,11 @@ def _jsonable_bounds(bounds):
 
 def _usb_setting_bounds(source):
 	"""min/max of fps, width and height for the format the camera will stream in."""
-	output = _run_v4l2_ctl(source)
-	formats = _parse_formats(output) if output else {}
+	if IS_WINDOWS:
+		formats = _windows_formats(source)
+	else:
+		output = _run_v4l2_ctl(source)
+		formats = _parse_formats(output) if output else {}
 	if not formats:
 		return {}
 	chosen_format = next(
@@ -1494,6 +1569,8 @@ def get_device_capabilities(installed_cameras):
 			),
 			"settings": settings,
 		}
+		if source in _USB_NAMES:   # Windows: the camera's name, shown next to its number
+			capabilities["USB"][source]["name"] = _USB_NAMES[source]
 
 	try:
 		pi_camera_indices = get_pi_camera_indices()

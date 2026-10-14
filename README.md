@@ -186,17 +186,24 @@ support video capture are offered on the settings page.
 ### USB on Windows
 
 On Windows (standalone only) a USB camera's source is its camera number - `0`,
-`1`, ... in the order Windows lists the cameras - and the settings page offers
-the numbers it found. Some differences from Linux:
+`1`, ... in the order Windows lists the cameras. The settings page offers the
+cameras it found by number and name, e.g. `0 - Microsoft LifeCam HD-3000`.
 
-- Windows does not report a camera's formats, resolutions or frame rates, so
-  multiCam asks for MJPG at the configured size and fps and the camera picks
-  the nearest it supports. The log shows what it actually runs at.
-- Windows does not report the ranges of camera controls either: options are
-  passed to the camera as set (not limited to its minimum and maximum), and
-  the settings page shows "not reported on Windows". Drivers differ - for
-  example `autoexposure` may be 1 / 3 or 0.25 / 0.75 for manual / automatic.
-- Controls are not reset to their defaults at startup.
+multiCam reads each camera's formats, sizes, frame rates and control ranges
+through DirectShow (the `comtypes` and `pygrabber` packages, installed on
+Windows only), so it works as on Linux: controls are reset to their defaults
+at startup, options are limited to the camera's ranges, and the requested
+resolution and fps are adjusted to what the camera offers. Differences:
+
+- DirectShow reports a fastest and slowest frame rate for each size, not a list,
+  so common rates in between are offered (the camera picks the nearest).
+- `balance`, `autoexposure` and `autofocus` switch the camera's automatic white
+  balance, exposure and focus: **1 = automatic, 0 = manual** (on Linux,
+  `autoexposure` is the driver's own value, e.g. 1 / 3).
+- If DirectShow cannot be used (e.g. the packages failed to install), multiCam
+  still runs: cameras are shown by number only, and options are passed to the
+  camera as set, without ranges - the settings page then shows
+  "not reported on Windows".
 
 ### USB options
 

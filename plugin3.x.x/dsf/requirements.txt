@@ -6,3 +6,5 @@ pydantic
 starlette
 uvicorn[standard]
 picamera2; sys_platform == "linux"
+comtypes; sys_platform == "win32"
+pygrabber==0.2; sys_platform == "win32"

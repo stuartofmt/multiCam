@@ -56,8 +56,11 @@ const sourceItems = computed(() => {
         const usedBy = props.cameras.find(
             (c) => c.id !== props.camera.id && c.cameratype === props.camera.cameratype && c.source.trim() === source
         );
+        // Windows: the camera's name next to its number
+        const name = props.settings.capabilities[props.camera.cameratype]?.[source]?.name;
+        const label = name ? `${source} - ${name}` : source;
         items.push({
-            title: usedBy ? `${source} (used by ${usedBy.name.trim() || "another camera"})` : source,
+            title: usedBy ? `${label} (used by ${usedBy.name.trim() || "another camera"})` : label,
             value: source,
         });
     }
