@@ -33,6 +33,7 @@ import tempfile
 import zlib
 from pathlib import Path
 
+from camera_platform import PICAMERA_AVAILABLE, PLATFORM, USB_SOURCE_RULE, is_usb_source
 from defaults import (
     AllowedOptions,
     DefaultCameraSettings,
@@ -43,6 +44,8 @@ from defaults import (
 )
 
 CAMERA_TYPES = ("USB", "PICAMERA", "STREAM")
+# The camera types this system can run: no Pi cameras without Picamera2 (e.g. on Windows)
+AVAILABLE_CAMERA_TYPES = tuple(t for t in CAMERA_TYPES if t != "PICAMERA" or PICAMERA_AVAILABLE)
 
 # Log levels parse_config accepts; the settings page offers INFO and DEBUG.
 LOG_LEVELS = ("INFO", "DEBUG")
@@ -67,7 +70,9 @@ def allowed_keys(cameratype):
 def settings_schema():
     """Names and defaults of each camera type's settings and options, for the settings page."""
     return {
-        "types": list(CAMERA_TYPES),
+        "types": list(AVAILABLE_CAMERA_TYPES),
+        # "linux" or "windows": how USB cameras are named, and whether ranges are reported
+        "platform": PLATFORM,
         "settings": {
             "USB": {setting.name: setting.value for setting in DefaultCameraSettings},
             "PICAMERA": {setting.name: setting.value for setting in DefaultCameraSettings},
@@ -219,8 +224,8 @@ def validate_cameras(cameras):
 
         if not source or not source.isprintable():
             errors.append(f"{label}: source is required")
-        elif cameratype == "USB" and not source.startswith("/dev/video"):
-            errors.append(f"{label}: USB source must be of the form /dev/videoN")
+        elif cameratype == "USB" and not is_usb_source(source):
+            errors.append(f"{label}: USB source must be {USB_SOURCE_RULE}")
         elif cameratype == "PICAMERA" and not source.isdigit():
             errors.append(f"{label}: PICAMERA source must be a camera index (0, 1, ...)")
         elif cameratype == "STREAM" and not any(source.startswith(t) for t in NETWORK_TYPES):

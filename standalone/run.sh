@@ -5,9 +5,14 @@
 cd "$(dirname "$0")" || exit 1
 if [ ! -x venv/bin/python ]; then
 	echo "First run: making the venv and installing dsf/requirements.txt into it"
-	python3 -m venv --system-site-packages venv && venv/bin/python -m pip install -r dsf/requirements.txt || {
+	python3 -m venv --system-site-packages venv || {
 		echo "Could not make the venv. On Debian or Raspberry Pi OS the venv module needs: sudo apt install python3-venv"
 		rm -rf venv   # a half-made venv would be taken as ready next time
+		exit 1
+	}
+	venv/bin/python -m pip install -r dsf/requirements.txt || {
+		echo "Could not install dsf/requirements.txt into the venv - see the pip messages above"
+		rm -rf venv
 		exit 1
 	}
 fi

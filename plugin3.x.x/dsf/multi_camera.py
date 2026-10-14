@@ -2,7 +2,7 @@
 multi_camera.py
 
 Background multi-camera capture manager using OpenCV.
-Optimized for Linux webcam streaming.
+USB cameras are opened with V4L2 on Linux and DirectShow on Windows (see camera_platform).
 """
 
 import cv2
@@ -13,6 +13,7 @@ import os
 from typing import Dict, Optional
 
 import logger_module
+from camera_platform import IS_WINDOWS, OPENCV_CONTROLS, USB_BACKEND, usb_capture_source
 
 
 NETWORK_TIMEOUT_MSEC = 10000
@@ -131,10 +132,16 @@ class CameraStream(ClientTracking):
 		jpegresolution: int,
 		format: Optional[str] = None,
 		capturefps: Optional[float] = None,
+		controls: Optional[dict] = None,
 	):
 
 		self.source = source
 		self.cameratype = cameratype
+		# What OpenCV opens: a USB camera's number on Windows, else the source as given
+		self.capture_source = usb_capture_source(source) if cameratype == "USB" else source
+		# Camera controls set through OpenCV once the camera is open ({option name: value}). Only used on Windows:
+		# on Linux they are set with v4l2-ctl before the camera starts.
+		self.controls = controls or {}
 
 		# fps is the rate served; the device can run faster (capturefps) and
 		# the capture loop drops frames to match fps.
@@ -179,7 +186,7 @@ class CameraStream(ClientTracking):
 				os.environ.pop("OPENCV_FFMPEG_CAPTURE_OPTIONS", None)
 
 			try:
-				return cv2.VideoCapture(self.source, backend, params)
+				return cv2.VideoCapture(self.capture_source, backend, params)
 			finally:
 				if old_ffmpeg_opts is not None:
 					os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = old_ffmpeg_opts
@@ -211,7 +218,7 @@ class CameraStream(ClientTracking):
 
 		logger_module.logger.debug(
 			f"Opening {self.source} "
-			f"using {'network backend' if is_network_source else 'V4L2'}"
+			f"using {'network backend' if is_network_source else 'DirectShow' if IS_WINDOWS else 'V4L2'}"
 		)
 
 		#
@@ -219,11 +226,10 @@ class CameraStream(ClientTracking):
 		#
 		if self.api_preference:
 			backend = self.api_preference
-		elif isinstance(self.source, str):
-			if self.cameratype == "STREAM":
-				backend = cv2.CAP_ANY
-			else:
-				backend = cv2.CAP_V4L2
+		elif self.cameratype == "STREAM":
+			backend = cv2.CAP_ANY
+		else:
+			backend = USB_BACKEND
 
 		#
 		# FFmpeg capture options differ by source type:
@@ -297,6 +303,9 @@ class CameraStream(ClientTracking):
 					cv2.CAP_PROP_FPS,
 					float(self.capturefps)
 				)
+
+			if IS_WINDOWS:
+				self._apply_opencv_controls()
 
 		#
 		# Attempt to apply supported camera properties.
@@ -376,6 +385,13 @@ class CameraStream(ClientTracking):
 			f"Camera opened successfully using backend {backend_name}"
 			f"{' (JPEG passthrough)' if self.passthrough else ''}"
 		)
+		if IS_WINDOWS and not is_network_source:
+			# Windows does not report a camera's formats beforehand, so say what it actually agreed to
+			logger_module.logger.info(
+				f"Camera {self.source} is running at "
+				f"{int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT))}, "
+				f"{self.capture.get(cv2.CAP_PROP_FPS):g} fps (requested {self.width}x{self.height}, {self.capturefps:g} fps)"
+			)
 
 		self.running = True
 
@@ -385,6 +401,22 @@ class CameraStream(ClientTracking):
 		)
 
 		self.thread.start()
+
+	def _apply_opencv_controls(self):
+		"""Set the camera controls through OpenCV (Windows). A control the camera does not take is logged and skipped."""
+
+		for name, value in self.controls.items():
+			prop = OPENCV_CONTROLS.get(name)
+			if prop is None:
+				continue
+			try:
+				accepted = self.capture.set(prop, float(value))
+			except Exception:
+				accepted = False
+			if accepted:
+				logger_module.logger.debug(f"[{self.source}] {name} set to {value}")
+			else:
+				logger_module.logger.info(f"[{self.source}] {name}: the camera did not accept {value}")
 
 	def _apply_rotation(self, frame):
 		"""Apply the configured rotation to a frame."""
@@ -565,6 +597,7 @@ class MultiCameraManager:
 				jpegresolution=jpegresolution,
 				format=format,
 				capturefps=capturefps,
+				controls=controls,
 			)
 
 	def start(self):

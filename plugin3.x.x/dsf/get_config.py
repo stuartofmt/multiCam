@@ -1,5 +1,4 @@
 import errno
-import fcntl
 import os
 import struct
 import re
@@ -12,12 +11,26 @@ from defaults import (
 	DefaultCameraSettings, DefaultNetworkCameraSettings, AllowedOptions, NETWORK_TYPES,
 	URL_NAME_SETTINGS, URL_NAME_RE,
 )
+import cv2
+
+from camera_platform import (
+	IS_WINDOWS, PICAMERA_AVAILABLE, USB_BACKEND, WINDOWS_MAX_CAMERAS, WINDOWS_MISSES_TO_STOP, is_usb_source,
+)
 from logger_module import logger
 from multi_camera import normalize_rotation
 from settings_config import load_settings, LOG_LEVELS, DEFAULT_LOG_LEVEL
 
-# --- CSI cameras via picamera2 ---
-from picamera2 import Picamera2
+# V4L2 device checks use ioctl - Linux only
+try:
+	import fcntl
+except ImportError:
+	fcntl = None
+
+# --- CSI cameras via picamera2 (Raspberry Pi OS only) ---
+if PICAMERA_AVAILABLE:
+	from picamera2 import Picamera2
+else:
+	Picamera2 = None
 
 global PORT, LOGLEVEL, CAMERAS
 # From https://gist.github.com/laywill/63d75b53e8a7a801d77f0dd2b97de54d
@@ -200,7 +213,10 @@ def _usb_camera_in_use(device_path):
 	only the stream is exclusive, and it belongs to whichever process first
 	requested buffers. Requesting a buffer here fails with EBUSY while another
 	process holds the stream. The buffer is released again straight away.
+	Not on Windows (no V4L2): False.
 	"""
+	if fcntl is None:
+		return False
 	fd = os.open(device_path, os.O_RDWR | os.O_NONBLOCK)
 	try:
 		request = struct.pack("5I", 1, _V4L2_BUF_TYPE_VIDEO_CAPTURE, _V4L2_MEMORY_MMAP, 0, 0)
@@ -399,8 +415,10 @@ FPS_LINE_RE = re.compile(r"\(([\d.]+)\s*fps\)")
 
 
 def _run_v4l2_ctl(source: str) -> Optional[str]:
-	"""Run v4l2-ctl --list-formats-ext for a source. Returns stdout, or None on failure."""
+	"""Run v4l2-ctl --list-formats-ext for a source. Returns stdout, or None on failure (always on Windows)."""
 
+	if IS_WINDOWS:
+		return None
 	try:
 		result = subprocess.run(
 			["v4l2-ctl", "-d", source, "--list-formats-ext"],
@@ -539,6 +557,13 @@ def validate_usb_camera_configs(cameras: Dict[str, dict], applied_options: Optio
 		if cam.get('cameratype') != 'USB':
 			continue
 		_add_applied_options(cam, (applied_options or {}).get(cam_name))
+		if IS_WINDOWS:
+			# Windows does not report a camera's formats: request MJPG at the configured size and fps and let the
+			# camera pick the nearest it supports (CameraStream logs what it got).
+			cam["format"] = _normalize_format(str(cam.get("format") or "MJPG"))
+			cam["width"], cam["height"] = int(cam["width"]), int(cam["height"])
+			cam["capturefps"] = cam["fps"]
+			continue
 		try:
 			source = cam.get("source")
 			output = _run_v4l2_ctl(source)
@@ -947,12 +972,48 @@ def highlight_print(msg):
 
 
 
+def _find_usb_cameras_windows():
+	"""
+	Return the camera numbers ("0", "1", ...) of the cameras Windows has, found by opening each number in turn
+	(Windows has no list of them that OpenCV can read). Stops after WINDOWS_MISSES_TO_STOP numbers in a row
+	that do not open.
+	"""
+	found = []
+	misses = 0
+	for number in range(WINDOWS_MAX_CAMERAS):
+		capture = cv2.VideoCapture(number, USB_BACKEND)
+		try:
+			if capture.isOpened():
+				found.append(str(number))
+				misses = 0
+			else:
+				misses += 1
+		finally:
+			capture.release()
+		if misses >= WINDOWS_MISSES_TO_STOP:
+			break
+
+	camera_results = []
+	if found:
+		camera_results.append("USB camera(s) found (Windows camera numbers):")
+		for number in found:
+			camera_results.append(f"\n-- {number}")
+		camera_results.append("\nWindows does not report camera control ranges: options are passed to the camera as set.")
+	else:
+		camera_results.append("No USB cameras were found.")
+	highlight_print(camera_results)
+	return found
+
+
 def find_usb_cameras():
 	"""
 	Return a list of /dev/videoN paths for USB cameras that actually
 	support video capture (filters out metadata-only nodes by
 	checking reported capabilities, not by even/odd guessing).
+	On Windows, the camera numbers instead (see _find_usb_cameras_windows).
 	"""
+	if IS_WINDOWS:
+		return _find_usb_cameras_windows()
 	try:
 		video_nodes = sorted(glob.glob('/dev/video*'),
 							key=lambda x: int(re.search(r'\d+', x).group()))
@@ -1020,6 +1081,9 @@ def find_pi_cameras():
 	Returns a list of the Picamera2 slots of those cameras. These match the
 	camera sources that parse_config resolves from PICAMERA sources.
 	"""
+	if Picamera2 is None:
+		highlight_print(["No Pi cameras: Picamera2 is not available on this system."])
+		return []
 	try:
 		pi_camera_indices = get_pi_camera_indices()
 
@@ -1058,6 +1122,8 @@ def get_pi_camera_indices():
 	libcamera also lists USB cameras (uvcvideo pipeline), so only cameras
 	on a Raspberry Pi pipeline (rpi/vc4, rpi/pisp) are kept.
 	"""
+	if Picamera2 is None:
+		return []
 	# global_camera_info is sorted by Id, so its order is not the camera number; 'Num' is.
 	# It omits PipelineHandler, so read that from the libcamera camera itself.
 	libcamera_cameras = Picamera2._cm.cms.cameras
@@ -1158,10 +1224,15 @@ def parse_config(config_file,logger):
 				values = camera.get('values') or {}
 
 				if cameratype == 'USB':
-					if source.startswith('/dev/video'):
+					if is_usb_source(source):
 						CAMERAS[name], CAMERA_CONFIG[name] = get_config_from_file(values, name, source, "USB")
+					else:
+						logger.warning(f'[{name}] USB source {source} is not a USB camera on this system; skipping it')
 
 				elif cameratype == 'PICAMERA':
+					if Picamera2 is None:
+						logger.warning(f'[{name}] Pi cameras are not available on this system; skipping it')
+						continue
 					try:
 						camera_number = int(source)
 					except ValueError:
@@ -1251,7 +1322,13 @@ def configure_cameras(installed_cameras,camera_list,requested_options):
 
 				try:
 					# Get and set camera options for USB and Pi cameras - No need for streams
-					if details['cameratype'] == 'USB':
+					if details['cameratype'] == 'USB' and IS_WINDOWS:
+						# No v4l2-ctl: the options are passed to the camera through OpenCV when it starts, as set
+						applied_options[name] = dict(requested_options[name])
+						if requested_options[name]:
+							camera_list[name]['controls'] = dict(requested_options[name])
+
+					elif details['cameratype'] == 'USB':
 						camera_options = get_camera_options_usb(name,details['source'])
 						logger.debug(camera_options)
 						applied = set_controls_usb(camera_options,requested_options[name])

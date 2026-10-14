@@ -32,26 +32,36 @@ The plugin is installed using DWC in the normal manner.  **Note that there are m
 
 ### Standalone (without DWC)
 
-multiCam can also run on its own on Raspberry Pi OS, with no DuetWebControl or
-Duet. Download `standalone-multiCam-<version>.zip` from the release, unzip it on
-the Pi and run:
+multiCam can also run on its own, with no DuetWebControl or Duet, on Linux
+(e.g. Raspberry Pi OS) or Windows. Download `standalone-multiCam-<version>.zip`
+from the release, unzip it where multiCam should live and start it:
 
-```sh
-sudo bash install.sh
-```
+- **Linux:** `./run.sh`
+- **Windows:** double-click `run.bat` (or run it from a command prompt)
 
-This installs the packages multiCam needs, puts it in `/opt/multiCam` and starts
-it as the `multicam` service, which also starts at every boot. At the end it
-shows the address of the camera page. Running it again upgrades multiCam and
-keeps the settings. `INSTALL.md` in the ZIP has the details, including
-`uninstall.sh`.
+The first start makes a Python environment (`venv`) next to it and installs
+what multiCam needs, so it needs internet access and takes a few minutes. Later
+starts are quick. If something goes wrong, `run.bat` keeps its window open so
+the reason can be read.
+
+Before the first start:
+
+- **Linux:** Python 3 with venv (`sudo apt install python3-venv`) and
+  `v4l-utils` for USB cameras (`sudo apt install v4l-utils`). For Pi cameras,
+  `python3-picamera2` (already on Raspberry Pi OS).
+- **Windows:** Python 3.12 or later from [python.org](https://www.python.org/downloads/),
+  with **Add python.exe to PATH** ticked (multiCam needs 3.12 or later
+  everywhere; Raspberry Pi OS 13 has 3.13).
 
 In a standalone install:
 
-- the log and settings are in `/var/lib/multiCam` (instead of `sys/multiCam`),
-  so find the address with
-  `grep "View cameras at" /var/lib/multiCam/multiCam.log`;
-- restart multiCam after saving settings with `sudo systemctl restart multicam`.
+- the log and settings are kept next to `multiCam.py` (in the `dsf` folder),
+  so find the address with `grep "View cameras at" dsf/multiCam.log` (Linux)
+  or by opening `dsf\multiCam.log` (Windows);
+- multiCam runs until its window is closed or Ctrl+C is pressed: start it again
+  with `run.sh` / `run.bat` after saving settings;
+- on Windows only USB cameras and network streams are available (see
+  [USB on Windows](#usb-on-windows)).
 
 ## Finding the IP address and port
 
@@ -172,6 +182,21 @@ The source of a USB camera is a device of the form `/dev/videoN`.
 
 Many USB cameras create more than one `/dev/video` node. Only nodes that
 support video capture are offered on the settings page.
+
+### USB on Windows
+
+On Windows (standalone only) a USB camera's source is its camera number - `0`,
+`1`, ... in the order Windows lists the cameras - and the settings page offers
+the numbers it found. Some differences from Linux:
+
+- Windows does not report a camera's formats, resolutions or frame rates, so
+  multiCam asks for MJPG at the configured size and fps and the camera picks
+  the nearest it supports. The log shows what it actually runs at.
+- Windows does not report the ranges of camera controls either: options are
+  passed to the camera as set (not limited to its minimum and maximum), and
+  the settings page shows "not reported on Windows". Drivers differ - for
+  example `autoexposure` may be 1 / 3 or 0.25 / 0.75 for manual / automatic.
+- Controls are not reset to their defaults at startup.
 
 ### USB options
 

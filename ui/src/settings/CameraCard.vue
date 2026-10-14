@@ -5,7 +5,6 @@ import { computed, ref } from "vue";
 import { mdiDelete } from "@mdi/js";
 import {
     ROTATIONS,
-    TYPE_HINTS,
     detectedSources,
     effectiveFor,
     formatValue,
@@ -15,6 +14,7 @@ import {
     settingBounds,
     settingKeys,
     sourceFitsType,
+    typeHint,
     unusedSource,
 } from "./cameraLogic.js";
 
@@ -66,14 +66,14 @@ const sourceItems = computed(() => {
 
 const sourcePlaceholder = computed(() => {
     if (!usesSourceSelect.value) {
-        return TYPE_HINTS[props.camera.cameratype] || "";
+        return typeHint(props.settings, props.camera.cameratype);
     }
     return detectedSources(props.settings, props.camera.cameratype).length ? "Select source" : "No cameras detected";
 });
 
 function setType(cameratype) {
     props.camera.cameratype = cameratype;
-    if (!sourceFitsType(props.camera.source, cameratype)) {
+    if (!sourceFitsType(props.settings, props.camera.source, cameratype)) {
         props.camera.source = unusedSource(props.settings, props.cameras, cameratype, props.camera);
     }
 }

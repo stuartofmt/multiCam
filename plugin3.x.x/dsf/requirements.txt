@@ -5,4 +5,4 @@ opencv-python-headless
 pydantic
 starlette
 uvicorn[standard]
-picamera2
+picamera2; sys_platform == "linux"

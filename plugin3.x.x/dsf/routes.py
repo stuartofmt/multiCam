@@ -50,7 +50,7 @@ class CameraConfig(BaseModel):
     # URL path segments: /<camera name>/<streamname> and /<camera name>/<snapshotname>
     streamname: str = DefaultCameraSettings.streamname.value
     snapshotname: str = DefaultCameraSettings.snapshotname.value
-    # Picamera only: libcamera controls applied when the camera starts.
+    # Controls applied when the camera starts: libcamera ones for a Pi camera, OpenCV ones for a USB camera on Windows.
     controls: Optional[dict] = None
 
     @model_validator(mode="after")

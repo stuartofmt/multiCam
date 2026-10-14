@@ -4,11 +4,20 @@
 
 export const ROTATIONS = ["0", "90", "180", "270"];
 
-export const TYPE_HINTS = {
+const TYPE_HINTS = {
     USB: "/dev/video0",
     PICAMERA: "0",
     STREAM: "http://host:port/path",
 };
+
+// "linux" or "windows" (from the server). On Windows a USB camera is a camera number (0, 1, ...), not /dev/videoN.
+export function isWindows(settings) {
+    return settings.schema.platform === "windows";
+}
+
+export function typeHint(settings, cameratype) {
+    return cameratype === "USB" && isWindows(settings) ? "0" : TYPE_HINTS[cameratype] || "";
+}
 
 export function settingKeys(settings, cameratype) {
     return Object.keys(settings.schema.settings[cameratype] || {});
@@ -58,7 +67,8 @@ export function optionBounds(settings, camera, key) {
         return "camera not detected";
     }
     if (!capabilities.options) {
-        return "unknown - camera was busy";
+        // Windows does not report control ranges: the value is passed to the camera as set
+        return isWindows(settings) ? "not reported on Windows" : "unknown - camera was busy";
     }
     return capabilities.options[key] || "not supported by camera";
 }
@@ -82,10 +92,10 @@ export function sameValue(requested, effective) {
     return String(requested).trim() === String(effective);
 }
 
-export function sourceFitsType(source, cameratype) {
+export function sourceFitsType(settings, source, cameratype) {
     source = source.trim();
     if (cameratype === "USB") {
-        return source.startsWith("/dev/video");
+        return isWindows(settings) ? /^\d+$/.test(source) : source.startsWith("/dev/video");
     }
     if (cameratype === "PICAMERA") {
         return /^\d+$/.test(source);

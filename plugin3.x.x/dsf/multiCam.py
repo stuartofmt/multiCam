@@ -11,6 +11,8 @@ Venv python install e.g.
 # MUST BE AT THE VERY START OF THE SCRIPT
 import os
 os.environ["LIBCAMERA_LOG_LEVELS"] = "*:ERROR"
+# OpenCV warns about every camera number that does not open while Windows' cameras are looked for
+os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
 
 from pathlib import Path
 import sys
