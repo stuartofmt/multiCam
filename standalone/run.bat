@@ -1,20 +1,20 @@
 @echo off
 rem Start the program with its venv (made by Prepare in Prep_and_Package). With no venv - e.g. just
-rem unzipped from a release - it is made first and dsf\requirements.txt (with dsf\requirements-windows.txt, if there is
+rem unzipped from a release - it is made first and plugin3.x.x\dsf\requirements.txt (with plugin3.x.x\dsf\requirements-windows.txt, if there is
 rem one) is installed into it.
 cd /d "%~dp0"
-set REQS=-r "dsf\requirements.txt"
-if exist "dsf\requirements-windows.txt" set REQS=%REQS% -r "dsf\requirements-windows.txt"
+set REQS=-r "plugin3.x.x\dsf\requirements.txt"
+if exist "plugin3.x.x\dsf\requirements-windows.txt" set REQS=%REQS% -r "plugin3.x.x\dsf\requirements-windows.txt"
 if not exist venv\Scripts\python.exe (
-  echo First run: making the venv and installing dsf\requirements.txt into it
+  echo First run: making the venv and installing plugin3.x.x\dsf\requirements.txt into it
   py -3 -m venv venv 2>nul || python -m venv venv || goto novenv
   venv\Scripts\python.exe -m pip install %REQS% || goto nopip
 )
-venv\Scripts\python.exe -u dsf\multiCam.py %*
+venv\Scripts\python.exe -u plugin3.x.x\dsf\multiCam.py %*
 set CODE=%errorlevel%
 if not %CODE%==0 (
   echo.
-  echo dsf\multiCam.py stopped with an error ^(exit code %CODE%^) - see the messages above
+  echo plugin3.x.x\dsf\multiCam.py stopped with an error ^(exit code %CODE%^) - see the messages above
   pause
 )
 exit /b %CODE%
