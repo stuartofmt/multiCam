@@ -106,6 +106,52 @@ def sig_handler(signum, frame):
 	force_quit(0)
 
 
+_folder_notes = []  # What default_folder found out, logged once the log is set up
+
+
+def packaged_python():
+	"""True on Windows if this Python runs as a packaged app (e.g. from the Microsoft Store, started through
+	...\\WindowsApps\\python.exe).  Windows then quietly redirects files it writes under AppData to a private folder of
+	the package, which Explorer and other programs do not see."""
+	if os.name != 'nt':
+		return False
+	try:
+		import ctypes
+		length = ctypes.c_uint32(0)
+		# 15700 (APPMODEL_ERROR_NO_PACKAGE) = not packaged; 122 (ERROR_INSUFFICIENT_BUFFER) = packaged
+		return ctypes.windll.kernel32.GetCurrentPackageFullName(ctypes.byref(length), None) != 15700
+	except (AttributeError, OSError):
+		return False
+
+
+def folder_writable(folder):
+	try:
+		test = folder / '.multiCam-write-test'
+		test.write_text('')
+		test.unlink()
+		return True
+	except OSError:
+		return False
+
+
+def default_folder():
+	"""The folder for the log and settings.config when no logfile is given: this program's folder.  If it can not be
+	written to (e.g. in Program Files) on Windows: the user's application data - or Documents\\multiCam with a
+	packaged Python (Microsoft Store), which would hide files in application data."""
+	folder = Path(__file__).parent
+	if os.name != 'nt' or folder_writable(folder):
+		return folder
+	if packaged_python() or not os.environ.get('APPDATA'):
+		folder = Path.home() / 'Documents' / 'multiCam'
+		_folder_notes.append(f'The program folder can not be written to, and this Python is a packaged app (e.g. from the '
+							 f'Microsoft Store), which hides files in AppData from other programs - so {folder} is used')
+	else:
+		folder = Path(os.environ['APPDATA']) / 'multiCam'
+		_folder_notes.append(f'The program folder can not be written to - so {folder} is used')
+	folder.mkdir(parents=True, exist_ok=True)
+	return folder
+
+
 if __name__ == "__main__":
 
 	# shutdown with SIGINT (kill -2 <pid> or SIGTERM)
@@ -116,7 +162,7 @@ if __name__ == "__main__":
 	progName = os.path.splitext(os.path.basename(sys.argv[0]))[0]
 	progVersion = '1.0.0'
 
-	LOGFILENAME = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent / "multiCam.log"
+	LOGFILENAME = Path(sys.argv[1]) if len(sys.argv) > 1 else default_folder() / "multiCam.log"
 	#  The settings file is kept in the same folder as the logfile
 	SETTINGSFILENAME = LOGFILENAME.parent / 'settings.config'
 	print (f'{SETTINGSFILENAME=}')
@@ -134,6 +180,9 @@ if __name__ == "__main__":
 
 	from logger_module import logger # Need to import after setup_logging is called
 	logger.info(f'''Log file for {progName} -- {progVersion}''')
+	logger.info(f'Settings and log folder: {LOGFILENAME.parent}')
+	for note in _folder_notes:
+		logger.info(note)
 	if settings_message:
 		logger.info(settings_message)
 
