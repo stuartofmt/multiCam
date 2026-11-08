@@ -26,7 +26,7 @@ import signal
 import subprocess
 import logging
 
-from routes import app, start_cameras, stop_cameras, set_settings_state, set_restart_handler
+from routes import app, start_cameras, stop_cameras, set_settings_state, set_restart_handler, set_terminate_handler
 from camera_platform import IS_WINDOWS
 from settings_config import ensure_settings_file
 
@@ -94,6 +94,18 @@ def restart_program():
 		subprocess.Popen(command)
 		os._exit(0)
 	os.execv(sys.executable, command)
+
+
+def terminate_program():
+	"""End multiCam (the Terminate button on the settings page): stop the cameras, releasing their devices, then exit.
+	The web server runs in a daemon thread, so it ends with the process."""
+	logger.info('Terminating multiCam')
+	try:
+		stop_cameras()
+	except Exception as e:
+		logger.warning(f'Could not stop every camera before terminating: {e}')
+	logging.shutdown()   # flush the log file
+	os._exit(0)
 
 
 def force_quit(code):
@@ -219,6 +231,8 @@ if __name__ == "__main__":
 
 	# The settings page can restart multiCam to apply saved settings
 	set_restart_handler(restart_program)
+	# ... and end it (its Terminate button, when not the plugin)
+	set_terminate_handler(terminate_program)
 
 	# Values shown on the settings page
 	try:

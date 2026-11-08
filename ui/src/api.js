@@ -35,3 +35,7 @@ export function saveSettings(payload) {
 export function restart() {
     return request("/api/restart", { method: "POST" });
 }
+
+export function terminate() {
+    return request("/api/terminate", { method: "POST" });
+}

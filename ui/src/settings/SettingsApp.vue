@@ -1,8 +1,8 @@
 <script setup>
 // Settings page: edits the cameras, port and log level kept in multiCam's settings file.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { mdiArrowLeft, mdiContentSave, mdiPlus, mdiRestart, mdiUndo, mdiVideoOff } from "@mdi/js";
-import { getSettings, restart, saveSettings } from "../api.js";
+import { mdiArrowLeft, mdiContentSave, mdiPlus, mdiPower, mdiRestart, mdiUndo, mdiVideoOff } from "@mdi/js";
+import { getSettings, restart, saveSettings, terminate } from "../api.js";
 import { keysFor, sortByName, unusedSource } from "./cameraLogic.js";
 import CameraCard from "./CameraCard.vue";
 
@@ -211,6 +211,25 @@ function runConfirmed() {
     action?.();
 }
 
+// The Terminate button: only when multiCam is not the plugin (DWC's plugin manager starts and stops that)
+const terminated = ref(false);
+
+function terminateProgram() {
+    confirm(
+        "Terminate multiCam?",
+        "The camera streams stop, and multiCam has to be started again by hand.",
+        async () => {
+            try {
+                await terminate();
+                terminated.value = true;
+                showMessage("warning", ["multiCam has stopped. Start it again to use the cameras."]);
+            } catch (e) {
+                showMessage("error", [`Could not terminate multiCam: ${e.message}`]);
+            }
+        }
+    );
+}
+
 function deleteCamera(camera) {
     const label = camera.name.trim() || "this camera";
     confirm(
@@ -259,6 +278,8 @@ onBeforeUnmount(() => {
             <v-app-bar-title>Camera Settings</v-app-bar-title>
             <template #append>
                 <v-btn href="/" :prepend-icon="mdiArrowLeft" variant="tonal">Camera Streams</v-btn>
+                <v-btn v-if="settings && !settings.plugin" class="ml-2" color="error" variant="tonal"
+                       :prepend-icon="mdiPower" :disabled="terminated" @click="terminateProgram">Terminate</v-btn>
             </template>
         </v-app-bar>
 

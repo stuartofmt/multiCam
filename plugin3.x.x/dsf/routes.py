@@ -1,4 +1,5 @@
 import asyncio
+import os
 import threading
 import time
 from typing import Optional
@@ -145,6 +146,22 @@ def set_restart_handler(handler):
     _restart_handler = handler
 
 
+# Ends multiCam (set by multiCam.py, see set_terminate_handler); None until then.
+_terminate_handler = None
+# DSF installs plugins here: as the plugin, DWC's plugin manager starts and stops multiCam - no Terminate button
+DSF_PLUGIN_DIR = "/opt/dsf/plugins/"
+
+
+def set_terminate_handler(handler):
+    global _terminate_handler
+    _terminate_handler = handler
+
+
+def running_as_plugin():
+    """True if DSF installed this copy of multiCam as its plugin."""
+    return os.path.realpath(__file__).startswith(DSF_PLUGIN_DIR)
+
+
 # Filled in by set_settings_state once the cameras are configured at startup.
 settings_state = {
     "config_file": None,
@@ -218,6 +235,8 @@ async def get_settings():
         "restart_required": settings_state["restart_required"],
         "started_at": STARTED_AT,
         "cameras_started": settings_state["cameras_started"],
+        # As the plugin there is no Terminate button - DWC's plugin manager stops it
+        "plugin": running_as_plugin(),
     }
 
 
@@ -281,6 +300,19 @@ async def restart():
     logger_module.logger.info("Restart requested from the settings page")
     threading.Timer(RESTART_DELAY_SEC, _restart_handler).start()
     return {"status": "success", "port": port}
+
+
+@app.post("/api/terminate")
+async def terminate():
+    """End multiCam (the Terminate button) - not as the plugin, which DWC's plugin manager starts and stops."""
+    if running_as_plugin():
+        return JSONResponse({"status": "error", "message": "Running as a plugin - stop it from DWC's plugin manager"},
+                            status_code=403)
+    if _terminate_handler is None:
+        return JSONResponse({"status": "error", "message": "Terminating is not available yet"}, status_code=503)
+    logger_module.logger.info("Terminate requested from the settings page")
+    threading.Timer(RESTART_DELAY_SEC, _terminate_handler).start()  # after this answer reaches the page
+    return {"status": "success", "message": "multiCam is stopping"}
 
 
 @app.get("/api/cameras")
