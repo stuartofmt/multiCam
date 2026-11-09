@@ -184,6 +184,7 @@ def set_settings_state(config_file, capabilities, effective, port):
     settings_state["capabilities"] = capabilities
     settings_state["effective"] = effective
 
+
 app.mount(
     "/static",
     StaticFiles(directory=str(STATIC_DIR)),
@@ -193,6 +194,7 @@ app.mount(
 # ============================================================
 # Routes
 # ============================================================
+
 
 @app.get("/")
 @app.get("/index")
@@ -448,7 +450,6 @@ async def camera_snapshot(camera_name: str):
         return {"error": f"Camera '{camera_name}' has no valid captured frame"}
 
     return Response(content=jpg_bytes, media_type="image/jpeg")
-
 
 
 # Declared last so fixed paths such as /api/cameras and /streaming/<camera> match first.

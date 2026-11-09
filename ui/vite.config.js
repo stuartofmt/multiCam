@@ -15,27 +15,27 @@ import vuetify from "vite-plugin-vuetify";
 const multiCamUrl = process.env.MULTICAM_URL || "http://localhost:17800";
 
 export default defineConfig({
-    // multiCam serves the static folder at /static
-    base: "/static/",
-    plugins: [
-        vue(),
-        // Only the Vuetify components that are used end up in the bundle.
-        vuetify({ autoImport: true }),
-    ],
-    build: {
-        outDir: fileURLToPath(new URL("../plugin3.x.x/dsf/static", import.meta.url)),
-        emptyOutDir: true,
-        rollupOptions: {
-            input: {
-                index: fileURLToPath(new URL("index.html", import.meta.url)),
-                settings: fileURLToPath(new URL("settings.html", import.meta.url)),
-            },
-        },
-    },
-    server: {
-        proxy: {
-            // Everything outside /static (API, streams, snapshots) goes to the running multiCam.
-            "^/(?!static/).*": { target: multiCamUrl, changeOrigin: true },
-        },
-    },
+	// multiCam serves the static folder at /static
+	base: "/static/",
+	plugins: [
+		vue(),
+		// Only the Vuetify components that are used end up in the bundle.
+		vuetify({ autoImport: true }),
+	],
+	build: {
+		outDir: fileURLToPath(new URL("../plugin3.x.x/dsf/static", import.meta.url)),
+		emptyOutDir: true,
+		rollupOptions: {
+			input: {
+				index: fileURLToPath(new URL("index.html", import.meta.url)),
+				settings: fileURLToPath(new URL("settings.html", import.meta.url)),
+			},
+		},
+	},
+	server: {
+		proxy: {
+			// Everything outside /static (API, streams, snapshots) goes to the running multiCam.
+			"^/(?!static/).*": { target: multiCamUrl, changeOrigin: true },
+		},
+	},
 });

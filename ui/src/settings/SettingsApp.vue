@@ -30,17 +30,17 @@ const confirmDialog = ref({ show: false, title: "", text: "", action: null });
 // Only INFO and DEBUG are offered, but a level already in the file (e.g. WARNING)
 // is shown so saving doesn't change it unasked.
 const logLevelItems = computed(() => {
-    const items = ["INFO", "DEBUG"];
-    if (logLevel.value && !items.includes(logLevel.value)) {
-        items.push(logLevel.value);
-    }
-    return items;
+	const items = ["INFO", "DEBUG"];
+	if (logLevel.value && !items.includes(logLevel.value)) {
+		items.push(logLevel.value);
+	}
+	return items;
 });
 
 const portInUse = computed(() => settings.value?.port_in_use);
 
 function currentState() {
-    return JSON.stringify({ cameras: cameras.value, logLevel: logLevel.value, port: String(port.value ?? "") });
+	return JSON.stringify({ cameras: cameras.value, logLevel: logLevel.value, port: String(port.value ?? "") });
 }
 
 const dirty = computed(() => settings.value !== null && currentState() !== savedState.value);
@@ -48,361 +48,361 @@ const dirty = computed(() => settings.value !== null && currentState() !== saved
 // Any edit clears the last save / error message. Sync, so that reloading after a save
 // clears the old message before "Settings saved." is shown rather than after.
 watch(currentState, () => {
-    message.value = null;
+	message.value = null;
 }, { flush: "sync" });
 
 function showMessage(type, lines) {
-    message.value = { type, lines };
-    nextTick(() => messageBox.value?.$el?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
+	message.value = { type, lines };
+	nextTick(() => messageBox.value?.$el?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
 }
 
 async function load() {
-    loading.value = true;
-    let data;
-    try {
-        data = await getSettings();
-    } catch (e) {
-        loading.value = false;
-        showMessage("error", [`Could not load settings: ${e.message}`]);
-        return false;
-    }
+	loading.value = true;
+	let data;
+	try {
+		data = await getSettings();
+	} catch (e) {
+		loading.value = false;
+		showMessage("error", [`Could not load settings: ${e.message}`]);
+		return false;
+	}
 
-    settings.value = data;
-    cameras.value = sortByName(
-        data.cameras.map((camera) => ({
-            id: nextId++,
-            name: camera.name,
-            cameratype: camera.cameratype,
-            source: camera.source,
-            values: { ...camera.values },
-            loaded: { name: camera.name, cameratype: camera.cameratype, source: camera.source },
-        }))
-    );
-    logLevel.value = data.log_level;
-    port.value = String(data.port);
-    savedState.value = currentState();
-    loading.value = false;
-    return true;
+	settings.value = data;
+	cameras.value = sortByName(
+		data.cameras.map((camera) => ({
+			id: nextId++,
+			name: camera.name,
+			cameratype: camera.cameratype,
+			source: camera.source,
+			values: { ...camera.values },
+			loaded: { name: camera.name, cameratype: camera.cameratype, source: camera.source },
+		}))
+	);
+	logLevel.value = data.log_level;
+	port.value = String(data.port);
+	savedState.value = currentState();
+	loading.value = false;
+	return true;
 }
 
 async function save() {
-    // A blank port means 0 - pick a free port.
-    const portText = String(port.value ?? "").trim();
-    const portNumber = portText === "" ? 0 : Number(portText);
-    if (!Number.isInteger(portNumber)) {
-        showMessage("error", ["Port must be a whole number (0 picks a free port)"]);
-        return;
-    }
+	// A blank port means 0 - pick a free port.
+	const portText = String(port.value ?? "").trim();
+	const portNumber = portText === "" ? 0 : Number(portText);
+	if (!Number.isInteger(portNumber)) {
+		showMessage("error", ["Port must be a whole number (0 picks a free port)"]);
+		return;
+	}
 
-    const payload = {
-        log_level: logLevel.value,
-        port: portNumber,
-        cameras: cameras.value.map((camera) => {
-            const keys = keysFor(settings.value, camera.cameratype);
-            const values = {};
-            for (const [key, value] of Object.entries(camera.values)) {
-                if (keys.includes(key) && value !== null && value !== undefined && String(value).trim() !== "") {
-                    values[key] = String(value).trim();
-                }
-            }
-            return {
-                name: camera.name.trim(),
-                cameratype: camera.cameratype,
-                source: camera.source.trim(),
-                values,
-            };
-        }),
-    };
+	const payload = {
+		log_level: logLevel.value,
+		port: portNumber,
+		cameras: cameras.value.map((camera) => {
+			const keys = keysFor(settings.value, camera.cameratype);
+			const values = {};
+			for (const [key, value] of Object.entries(camera.values)) {
+				if (keys.includes(key) && value !== null && value !== undefined && String(value).trim() !== "") {
+					values[key] = String(value).trim();
+				}
+			}
+			return {
+				name: camera.name.trim(),
+				cameratype: camera.cameratype,
+				source: camera.source.trim(),
+				values,
+			};
+		}),
+	};
 
-    saving.value = true;
-    try {
-        await saveSettings(payload);
-    } catch (e) {
-        saving.value = false;
-        showMessage("error", e.errors || [`Save failed: ${e.message}`]);
-        return;
-    }
-    saving.value = false;
+	saving.value = true;
+	try {
+		await saveSettings(payload);
+	} catch (e) {
+		saving.value = false;
+		showMessage("error", e.errors || [`Save failed: ${e.message}`]);
+		return;
+	}
+	saving.value = false;
 
-    if (await load()) {
-        showMessage("success", ["Settings saved."]);
-    }
+	if (await load()) {
+		showMessage("success", ["Settings saved."]);
+	}
 }
 
 // Restart multiCam to apply the saved settings, wait until the new run answers (on the port it said it will use),
 // then show its settings - on that port's page if the port changed.
 async function restartNow() {
-    restarting.value = true;
-    message.value = null;
-    const startedBefore = settings.value?.started_at;
-    let port;
-    try {
-        port = String((await restart()).port);
-    } catch (e) {
-        restarting.value = false;
-        showMessage("error", [`Could not restart multiCam: ${e.message}`]);
-        return;
-    }
-    const samePort = port === (window.location.port || (window.location.protocol === "https:" ? "443" : "80"));
-    const origin = samePort ? window.location.origin : `${window.location.protocol}//${window.location.hostname}:${port}`;
+	restarting.value = true;
+	message.value = null;
+	const startedBefore = settings.value?.started_at;
+	let port;
+	try {
+		port = String((await restart()).port);
+	} catch (e) {
+		restarting.value = false;
+		showMessage("error", [`Could not restart multiCam: ${e.message}`]);
+		return;
+	}
+	const samePort = port === (window.location.port || (window.location.protocol === "https:" ? "443" : "80"));
+	const origin = samePort ? window.location.origin : `${window.location.protocol}//${window.location.hostname}:${port}`;
 
-    const deadline = Date.now() + RESTART_WAIT_SEC * 1000;
-    while (Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        try {
-            const response = await fetch(`${origin}/api/settings`, { cache: "no-store" });
-            const data = await response.json();
-            if (!response.ok || data.started_at === startedBefore || !data.cameras_started) {
-                continue;   // the old run has not stopped yet, or the new one is still starting its cameras
-            }
-        } catch {
-            continue;   // not answering yet
-        }
-        if (!samePort) {
-            window.location.href = `${origin}/settings`;
-            return;
-        }
-        await load();
-        restarting.value = false;
-        showMessage("success", ["multiCam has restarted - the saved settings are in use."]);
-        return;
-    }
-    restarting.value = false;
-    showMessage("error", [
-        `multiCam has not come back after ${RESTART_WAIT_SEC} seconds. Its log shows why ` +
-        "(and the address it is using, if that changed).",
-    ]);
+	const deadline = Date.now() + RESTART_WAIT_SEC * 1000;
+	while (Date.now() < deadline) {
+		await new Promise((resolve) => setTimeout(resolve, 1000));
+		try {
+			const response = await fetch(`${origin}/api/settings`, { cache: "no-store" });
+			const data = await response.json();
+			if (!response.ok || data.started_at === startedBefore || !data.cameras_started) {
+				continue;   // the old run has not stopped yet, or the new one is still starting its cameras
+			}
+		} catch {
+			continue;   // not answering yet
+		}
+		if (!samePort) {
+			window.location.href = `${origin}/settings`;
+			return;
+		}
+		await load();
+		restarting.value = false;
+		showMessage("success", ["multiCam has restarted - the saved settings are in use."]);
+		return;
+	}
+	restarting.value = false;
+	showMessage("error", [
+		`multiCam has not come back after ${RESTART_WAIT_SEC} seconds. Its log shows why ` +
+		"(and the address it is using, if that changed).",
+	]);
 }
 
 function uniqueName() {
-    const names = new Set(cameras.value.map((c) => c.name.trim()));
-    let n = cameras.value.length + 1;
-    while (names.has(`Camera${n}`)) {
-        n++;
-    }
-    return `Camera${n}`;
+	const names = new Set(cameras.value.map((c) => c.name.trim()));
+	let n = cameras.value.length + 1;
+	while (names.has(`Camera${n}`)) {
+		n++;
+	}
+	return `Camera${n}`;
 }
 
 async function addCamera() {
-    if (!settings.value) {
-        return;
-    }
-    const camera = {
-        id: nextId++,
-        name: uniqueName(),
-        cameratype: "USB",
-        source: "",
-        values: {},
-        loaded: null,
-    };
-    camera.source = unusedSource(settings.value, cameras.value, camera.cameratype, camera);
-    cameras.value.push(camera);
-    await nextTick();
-    cardRefs.get(camera.id)?.focus();
+	if (!settings.value) {
+		return;
+	}
+	const camera = {
+		id: nextId++,
+		name: uniqueName(),
+		cameratype: "USB",
+		source: "",
+		values: {},
+		loaded: null,
+	};
+	camera.source = unusedSource(settings.value, cameras.value, camera.cameratype, camera);
+	cameras.value.push(camera);
+	await nextTick();
+	cardRefs.get(camera.id)?.focus();
 }
 
 function confirm(title, text, action) {
-    confirmDialog.value = { show: true, title, text, action };
+	confirmDialog.value = { show: true, title, text, action };
 }
 
 function runConfirmed() {
-    const action = confirmDialog.value.action;
-    confirmDialog.value.show = false;
-    action?.();
+	const action = confirmDialog.value.action;
+	confirmDialog.value.show = false;
+	action?.();
 }
 
 // The Terminate button: only when multiCam is not the plugin (DWC's plugin manager starts and stops that)
 const terminated = ref(false);
 
 function terminateProgram() {
-    confirm(
-        "Terminate multiCam?",
-        "The camera streams stop, and multiCam has to be started again by hand.",
-        async () => {
-            try {
-                await terminate();
-                terminated.value = true;
-                showMessage("warning", ["multiCam has stopped. Start it again to use the cameras."]);
-            } catch (e) {
-                showMessage("error", [`Could not terminate multiCam: ${e.message}`]);
-            }
-        }
-    );
+	confirm(
+		"Terminate multiCam?",
+		"The camera streams stop, and multiCam has to be started again by hand.",
+		async () => {
+			try {
+				await terminate();
+				terminated.value = true;
+				showMessage("warning", ["multiCam has stopped. Start it again to use the cameras."]);
+			} catch (e) {
+				showMessage("error", [`Could not terminate multiCam: ${e.message}`]);
+			}
+		}
+	);
 }
 
 function deleteCamera(camera) {
-    const label = camera.name.trim() || "this camera";
-    confirm(
-        `Delete camera "${label}"?`,
-        "The change is written to the settings file when you press Save.",
-        () => {
-            cameras.value = cameras.value.filter((c) => c.id !== camera.id);
-        }
-    );
+	const label = camera.name.trim() || "this camera";
+	confirm(
+		`Delete camera "${label}"?`,
+		"The change is written to the settings file when you press Save.",
+		() => {
+			cameras.value = cameras.value.filter((c) => c.id !== camera.id);
+		}
+	);
 }
 
 function discardChanges() {
-    confirm("Discard all unsaved changes?", "The settings are reloaded from the settings file.", async () => {
-        await load();
-        message.value = null;
-    });
+	confirm("Discard all unsaved changes?", "The settings are reloaded from the settings file.", async () => {
+		await load();
+		message.value = null;
+	});
 }
 
 function setCardRef(id, component) {
-    if (component) {
-        cardRefs.set(id, component);
-    } else {
-        cardRefs.delete(id);
-    }
+	if (component) {
+		cardRefs.set(id, component);
+	} else {
+		cardRefs.delete(id);
+	}
 }
 
 function onBeforeUnload(event) {
-    if (dirty.value) {
-        event.preventDefault();
-    }
+	if (dirty.value) {
+		event.preventDefault();
+	}
 }
 
 onMounted(() => {
-    window.addEventListener("beforeunload", onBeforeUnload);
-    load();
+	window.addEventListener("beforeunload", onBeforeUnload);
+	load();
 });
 
 onBeforeUnmount(() => {
-    window.removeEventListener("beforeunload", onBeforeUnload);
+	window.removeEventListener("beforeunload", onBeforeUnload);
 });
 </script>
 
 <template>
-    <v-app>
-        <v-app-bar flat border="b">
-            <v-app-bar-title>Camera Settings</v-app-bar-title>
-            <template #append>
-                <v-btn href="/" :prepend-icon="mdiArrowLeft" variant="tonal">Camera Streams</v-btn>
-                <v-btn v-if="settings && !settings.plugin" class="ml-2" color="error" variant="tonal"
-                       :prepend-icon="mdiPower" :disabled="terminated" @click="terminateProgram">Terminate</v-btn>
-            </template>
-        </v-app-bar>
+	<v-app>
+		<v-app-bar flat border="b">
+			<v-app-bar-title>Camera Settings</v-app-bar-title>
+			<template #append>
+				<v-btn href="/" :prepend-icon="mdiArrowLeft" variant="tonal">Camera Streams</v-btn>
+				<v-btn v-if="settings && !settings.plugin" class="ml-2" color="error" variant="tonal"
+					   :prepend-icon="mdiPower" :disabled="terminated" @click="terminateProgram">Terminate</v-btn>
+			</template>
+		</v-app-bar>
 
-        <v-main>
-            <v-container fluid class="settings-page">
-                <v-progress-linear v-if="loading" indeterminate color="primary" class="mb-4" />
+		<v-main>
+			<v-container fluid class="settings-page">
+				<v-progress-linear v-if="loading" indeterminate color="primary" class="mb-4" />
 
-                <p v-if="settings" class="text-medium-emphasis mb-4">Settings file: {{ settings.config_file }}</p>
+				<p v-if="settings" class="text-medium-emphasis mb-4">Settings file: {{ settings.config_file }}</p>
 
-                <v-alert v-if="settings?.restart_required || restarting" type="warning" variant="tonal" class="mb-4">
-                    <template v-if="restarting">
-                        Restarting multiCam - this page carries on when it is back (finding and setting up the
-                        cameras can take a few seconds).
-                    </template>
-                    <template v-else>
-                        The settings have been saved. Restart multiCam for the changes to take effect.
-                        The Effective column still shows the values the cameras are running with.
-                    </template>
-                    <template #append>
-                        <v-btn
-                            color="warning"
-                            :prepend-icon="mdiRestart"
-                            :loading="restarting"
-                            :disabled="dirty"
-                            :title="dirty ? 'Save or discard your changes first' : 'Restart multiCam now'"
-                            @click="restartNow"
-                        >
-                            Restart now
-                        </v-btn>
-                    </template>
-                </v-alert>
+				<v-alert v-if="settings?.restart_required || restarting" type="warning" variant="tonal" class="mb-4">
+					<template v-if="restarting">
+						Restarting multiCam - this page carries on when it is back (finding and setting up the
+						cameras can take a few seconds).
+					</template>
+					<template v-else>
+						The settings have been saved. Restart multiCam for the changes to take effect.
+						The Effective column still shows the values the cameras are running with.
+					</template>
+					<template #append>
+						<v-btn
+							color="warning"
+							:prepend-icon="mdiRestart"
+							:loading="restarting"
+							:disabled="dirty"
+							:title="dirty ? 'Save or discard your changes first' : 'Restart multiCam now'"
+							@click="restartNow"
+						>
+							Restart now
+						</v-btn>
+					</template>
+				</v-alert>
 
-                <div aria-live="polite">
-                    <v-alert
-                        v-if="message"
-                        ref="messageBox"
-                        :type="message.type"
-                        variant="tonal"
-                        closable
-                        class="mb-4"
-                        @click:close="message = null"
-                    >
-                        <template v-if="message.lines.length === 1">{{ message.lines[0] }}</template>
-                        <ul v-else class="ml-4">
-                            <li v-for="line in message.lines" :key="line">{{ line }}</li>
-                        </ul>
-                    </v-alert>
-                </div>
+				<div aria-live="polite">
+					<v-alert
+						v-if="message"
+						ref="messageBox"
+						:type="message.type"
+						variant="tonal"
+						closable
+						class="mb-4"
+						@click:close="message = null"
+					>
+						<template v-if="message.lines.length === 1">{{ message.lines[0] }}</template>
+						<ul v-else class="ml-4">
+							<li v-for="line in message.lines" :key="line">{{ line }}</li>
+						</ul>
+					</v-alert>
+				</div>
 
-                <template v-if="settings">
-                    <v-empty-state
-                        v-if="cameras.length === 0"
-                        :icon="mdiVideoOff"
-                        title="No cameras configured"
-                        text="Use “Add camera” to add one."
-                    />
+				<template v-if="settings">
+					<v-empty-state
+						v-if="cameras.length === 0"
+						:icon="mdiVideoOff"
+						title="No cameras configured"
+						text="Use “Add camera” to add one."
+					/>
 
-                    <div class="camera-list">
-                        <CameraCard
-                            v-for="camera in cameras"
-                            :key="camera.id"
-                            :ref="(component) => setCardRef(camera.id, component)"
-                            :camera="camera"
-                            :cameras="cameras"
-                            :settings="settings"
-                            @delete="deleteCamera"
-                        />
-                    </div>
+					<div class="camera-list">
+						<CameraCard
+							v-for="camera in cameras"
+							:key="camera.id"
+							:ref="(component) => setCardRef(camera.id, component)"
+							:camera="camera"
+							:cameras="cameras"
+							:settings="settings"
+							@delete="deleteCamera"
+						/>
+					</div>
 
-                    <v-card class="mt-5">
-                        <v-card-text>
-                            <v-row dense align="center">
-                                <v-col cols="12" md="auto" class="d-flex flex-wrap ga-2">
-                                    <v-btn variant="tonal" :prepend-icon="mdiPlus" @click="addCamera">Add camera</v-btn>
-                                    <v-btn
-                                        color="primary"
-                                        :prepend-icon="mdiContentSave"
-                                        :disabled="!dirty"
-                                        :loading="saving"
-                                        @click="save"
-                                    >
-                                        Save
-                                    </v-btn>
-                                    <v-btn variant="tonal" :prepend-icon="mdiUndo" :disabled="!dirty" @click="discardChanges">
-                                        Discard changes
-                                    </v-btn>
-                                </v-col>
-                                <v-spacer />
-                                <v-col cols="12" sm="6" md="3">
-                                    <v-text-field
-                                        v-model="port"
-                                        label="Port"
-                                        inputmode="numeric"
-                                        :hint="`${portInUse ? `In use: ${portInUse}. ` : ''}0 picks a free port. Restart after changing.`"
-                                        persistent-hint
-                                    />
-                                </v-col>
-                                <v-col cols="12" sm="6" md="2">
-                                    <v-select v-model="logLevel" :items="logLevelItems" label="Log level" hide-details />
-                                </v-col>
-                            </v-row>
-                        </v-card-text>
-                    </v-card>
-                </template>
-            </v-container>
-        </v-main>
+					<v-card class="mt-5">
+						<v-card-text>
+							<v-row dense align="center">
+								<v-col cols="12" md="auto" class="d-flex flex-wrap ga-2">
+									<v-btn variant="tonal" :prepend-icon="mdiPlus" @click="addCamera">Add camera</v-btn>
+									<v-btn
+										color="primary"
+										:prepend-icon="mdiContentSave"
+										:disabled="!dirty"
+										:loading="saving"
+										@click="save"
+									>
+										Save
+									</v-btn>
+									<v-btn variant="tonal" :prepend-icon="mdiUndo" :disabled="!dirty" @click="discardChanges">
+										Discard changes
+									</v-btn>
+								</v-col>
+								<v-spacer />
+								<v-col cols="12" sm="6" md="3">
+									<v-text-field
+										v-model="port"
+										label="Port"
+										inputmode="numeric"
+										:hint="`${portInUse ? `In use: ${portInUse}. ` : ''}0 picks a free port. Restart after changing.`"
+										persistent-hint
+									/>
+								</v-col>
+								<v-col cols="12" sm="6" md="2">
+									<v-select v-model="logLevel" :items="logLevelItems" label="Log level" hide-details />
+								</v-col>
+							</v-row>
+						</v-card-text>
+					</v-card>
+				</template>
+			</v-container>
+		</v-main>
 
-        <v-dialog v-model="confirmDialog.show" max-width="460">
-            <v-card :title="confirmDialog.title" :text="confirmDialog.text">
-                <v-card-actions>
-                    <v-spacer />
-                    <v-btn variant="text" @click="confirmDialog.show = false">Cancel</v-btn>
-                    <v-btn color="primary" @click="runConfirmed">OK</v-btn>
-                </v-card-actions>
-            </v-card>
-        </v-dialog>
-    </v-app>
+		<v-dialog v-model="confirmDialog.show" max-width="460">
+			<v-card :title="confirmDialog.title" :text="confirmDialog.text">
+				<v-card-actions>
+					<v-spacer />
+					<v-btn variant="text" @click="confirmDialog.show = false">Cancel</v-btn>
+					<v-btn color="primary" @click="runConfirmed">OK</v-btn>
+				</v-card-actions>
+			</v-card>
+		</v-dialog>
+	</v-app>
 </template>
 
 <style scoped>
 .camera-list {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
 }
 </style>

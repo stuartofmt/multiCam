@@ -22,36 +22,36 @@ const RESTART_CHECK_SEC = 5;
 let restartCheck = null;
 
 async function loadCameras() {
-    loading.value = true;
-    error.value = "";
-    try {
-        const data = await getCameras();
-        startedAt = data.started_at ?? null;
-        cameras.value = (data.cameras || []).map((camera) => ({
-            name: camera.name,
-            streamUrl: cameraUrl(camera.name, camera.stream),
-            snapshotUrl: cameraUrl(camera.name, camera.snapshot),
-        }));
-    } catch (e) {
-        error.value = `Could not load cameras: ${e.message}`;
-    } finally {
-        loading.value = false;
-    }
+	loading.value = true;
+	error.value = "";
+	try {
+		const data = await getCameras();
+		startedAt = data.started_at ?? null;
+		cameras.value = (data.cameras || []).map((camera) => ({
+			name: camera.name,
+			streamUrl: cameraUrl(camera.name, camera.stream),
+			snapshotUrl: cameraUrl(camera.name, camera.snapshot),
+		}));
+	} catch (e) {
+		error.value = `Could not load cameras: ${e.message}`;
+	} finally {
+		loading.value = false;
+	}
 }
 
 function cameraUrl(name, endpoint) {
-    return new URL(`/${encodeURIComponent(name)}/${encodeURIComponent(endpoint)}`, window.location.href).href;
+	return new URL(`/${encodeURIComponent(name)}/${encodeURIComponent(endpoint)}`, window.location.href).href;
 }
 
 // A stream response never completes, so browsers (notably WebKit / iOS) may hold or merge a second
 // request for a URL already streaming in another tab. A unique query string forces a fresh connection.
 function streamSrc(camera) {
-    if (paused.value) {
-        return BLANK_IMAGE;
-    }
-    const url = new URL(camera.streamUrl);
-    url.searchParams.set("t", connection.value);
-    return url.href;
+	if (paused.value) {
+		return BLANK_IMAGE;
+	}
+	const url = new URL(camera.streamUrl);
+	url.searchParams.set("t", connection.value);
+	return url.href;
 }
 
 // A stream that ends (e.g. multiCam restarting to apply settings) is tried again - with the camera list read
@@ -60,142 +60,142 @@ const RETRY_SEC = 3;
 let retryTimer = null;
 
 function onStreamError() {
-    if (paused.value || retryTimer) {
-        return;
-    }
-    retryTimer = setTimeout(async () => {
-        retryTimer = null;
-        await loadCameras();
-        connection.value = Date.now();
-    }, RETRY_SEC * 1000);
+	if (paused.value || retryTimer) {
+		return;
+	}
+	retryTimer = setTimeout(async () => {
+		retryTimer = null;
+		await loadCameras();
+		connection.value = Date.now();
+	}, RETRY_SEC * 1000);
 }
 
 function onVisibilityChange() {
-    if (document.hidden) {
-        // WebKit (all iOS browsers) keeps an MJPEG connection open when an <img> src changes;
-        // window.stop() is what actually aborts the in-flight stream loads.
-        window.stop();
-        paused.value = true;
-        return;
-    }
-    paused.value = false;
-    connection.value = Date.now();
-    if (cameras.value.length === 0) {
-        // Hidden before the camera list finished loading (window.stop() aborted it).
-        loadCameras();
-    }
+	if (document.hidden) {
+		// WebKit (all iOS browsers) keeps an MJPEG connection open when an <img> src changes;
+		// window.stop() is what actually aborts the in-flight stream loads.
+		window.stop();
+		paused.value = true;
+		return;
+	}
+	paused.value = false;
+	connection.value = Date.now();
+	if (cameras.value.length === 0) {
+		// Hidden before the camera list finished loading (window.stop() aborted it).
+		loadCameras();
+	}
 }
 
 // multiCam restarted (or was unreachable and is back): read the cameras again and reconnect the streams
 async function checkForRestart() {
-    if (paused.value || loading.value) {
-        return;
-    }
-    let data;
-    try {
-        data = await getCameras();
-    } catch {
-        return;   // not answering (restarting): try again next time
-    }
-    if ((data.started_at ?? null) !== startedAt) {
-        await loadCameras();
-        connection.value = Date.now();
-    }
+	if (paused.value || loading.value) {
+		return;
+	}
+	let data;
+	try {
+		data = await getCameras();
+	} catch {
+		return;   // not answering (restarting): try again next time
+	}
+	if ((data.started_at ?? null) !== startedAt) {
+		await loadCameras();
+		connection.value = Date.now();
+	}
 }
 
 onMounted(() => {
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    loadCameras();
-    restartCheck = setInterval(checkForRestart, RESTART_CHECK_SEC * 1000);
+	document.addEventListener("visibilitychange", onVisibilityChange);
+	loadCameras();
+	restartCheck = setInterval(checkForRestart, RESTART_CHECK_SEC * 1000);
 });
 
 onBeforeUnmount(() => {
-    clearTimeout(retryTimer);
-    clearInterval(restartCheck);
-    document.removeEventListener("visibilitychange", onVisibilityChange);
+	clearTimeout(retryTimer);
+	clearInterval(restartCheck);
+	document.removeEventListener("visibilitychange", onVisibilityChange);
 });
 </script>
 
 <template>
-    <v-app>
-        <v-app-bar flat border="b">
-            <v-app-bar-title>Camera Streams</v-app-bar-title>
-            <template #append>
-                <v-btn href="/settings" :prepend-icon="mdiCog" variant="tonal">Settings</v-btn>
-            </template>
-        </v-app-bar>
+	<v-app>
+		<v-app-bar flat border="b">
+			<v-app-bar-title>Camera Streams</v-app-bar-title>
+			<template #append>
+				<v-btn href="/settings" :prepend-icon="mdiCog" variant="tonal">Settings</v-btn>
+			</template>
+		</v-app-bar>
 
-        <v-main>
-            <v-container fluid>
-                <v-progress-linear v-if="loading" indeterminate color="primary" class="mb-4" />
+		<v-main>
+			<v-container fluid>
+				<v-progress-linear v-if="loading" indeterminate color="primary" class="mb-4" />
 
-                <v-alert v-if="error" type="error" variant="tonal" class="mb-4">
-                    {{ error }}
-                    <template #append>
-                        <v-btn variant="text" @click="loadCameras">Retry</v-btn>
-                    </template>
-                </v-alert>
+				<v-alert v-if="error" type="error" variant="tonal" class="mb-4">
+					{{ error }}
+					<template #append>
+						<v-btn variant="text" @click="loadCameras">Retry</v-btn>
+					</template>
+				</v-alert>
 
-                <v-empty-state
-                    v-if="!loading && !error && cameras.length === 0"
-                    :icon="mdiVideoOff"
-                    title="No cameras configured"
-                    text="Add cameras on the settings page."
-                    action-text="Open settings"
-                    href="/settings"
-                />
+				<v-empty-state
+					v-if="!loading && !error && cameras.length === 0"
+					:icon="mdiVideoOff"
+					title="No cameras configured"
+					text="Add cameras on the settings page."
+					action-text="Open settings"
+					href="/settings"
+				/>
 
-                <div v-else class="camera-grid" aria-live="polite">
-                    <v-card v-for="camera in cameras" :key="camera.name" class="camera-card">
-                        <v-card-title class="camera-title">{{ camera.name }}</v-card-title>
-                        <v-card-text class="pb-2">
-                            <div class="camera-link">
-                                Stream:
-                                <a :href="camera.streamUrl" target="_blank" rel="noopener noreferrer">{{ camera.streamUrl }}</a>
-                            </div>
-                            <div class="camera-link">
-                                Snapshot:
-                                <a :href="camera.snapshotUrl" target="_blank" rel="noopener noreferrer">{{ camera.snapshotUrl }}</a>
-                            </div>
-                        </v-card-text>
-                        <img class="camera-image" :src="streamSrc(camera)" :alt="camera.name" @error="onStreamError">
-                    </v-card>
-                </div>
-            </v-container>
-        </v-main>
-    </v-app>
+				<div v-else class="camera-grid" aria-live="polite">
+					<v-card v-for="camera in cameras" :key="camera.name" class="camera-card">
+						<v-card-title class="camera-title">{{ camera.name }}</v-card-title>
+						<v-card-text class="pb-2">
+							<div class="camera-link">
+								Stream:
+								<a :href="camera.streamUrl" target="_blank" rel="noopener noreferrer">{{ camera.streamUrl }}</a>
+							</div>
+							<div class="camera-link">
+								Snapshot:
+								<a :href="camera.snapshotUrl" target="_blank" rel="noopener noreferrer">{{ camera.snapshotUrl }}</a>
+							</div>
+						</v-card-text>
+						<img class="camera-image" :src="streamSrc(camera)" :alt="camera.name" @error="onStreamError">
+					</v-card>
+				</div>
+			</v-container>
+		</v-main>
+	</v-app>
 </template>
 
 <style scoped>
 .camera-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(400px, 100%), 1fr));
-    gap: 20px;
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(400px, 100%), 1fr));
+	gap: 20px;
 }
 
 .camera-card {
-    padding-bottom: 12px;
+	padding-bottom: 12px;
 }
 
 .camera-title {
-    white-space: pre-line;
-    overflow-wrap: anywhere;
+	white-space: pre-line;
+	overflow-wrap: anywhere;
 }
 
 .camera-link {
-    overflow-wrap: anywhere;
+	overflow-wrap: anywhere;
 }
 
 .camera-link a {
-    color: inherit;
+	color: inherit;
 }
 
 .camera-image {
-    display: block;
-    width: calc(100% - 24px);
-    height: auto;
-    margin: 0 12px;
-    border-radius: 8px;
-    background: black;
+	display: block;
+	width: calc(100% - 24px);
+	height: auto;
+	margin: 0 12px;
+	border-radius: 8px;
+	background: black;
 }
 </style>
