@@ -17,6 +17,17 @@ os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
 from pathlib import Path
 import sys
 
+from logger_module import (setup_console_logger, setup_log, set_log_level)
+
+pythonMajor = 3
+pythonMinor = 10  # sys.orig_argv (Restart now) and X | Y type annotations - Raspberry Pi OS Bookworm has 3.11
+
+# Checked before the other modules are loaded: on an older Python they fail before this could say why
+if __name__ == "__main__" and sys.version_info < (pythonMajor, pythonMinor):
+    logger = setup_console_logger(os.path.splitext(os.path.basename(sys.argv[0]))[0])
+    logger.info(f'multiCam needs Python {pythonMajor}.{pythonMinor} or later - this is {sys.version.split()[0]} - Exiting')
+    sys.exit(1)
+
 import httpx
 import threading
 import time
@@ -29,8 +40,6 @@ import logging
 from routes import app, start_cameras, stop_cameras, set_settings_state, set_restart_handler, set_terminate_handler
 from camera_platform import IS_WINDOWS
 from settings_config import ensure_settings_file
-
-from logger_module import (setup_console_logger, setup_log, set_log_level)
 
 
 def port_in_use(ip_address, port):

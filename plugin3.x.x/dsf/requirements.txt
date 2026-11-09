@@ -1,7 +1,12 @@
-fastapi
-httpx
+# What pip installs on every platform (Python 3.10 or later). One comparator per line - pipInstall2 (the DWC
+# plugin install) does not accept ranges such as ">=1,<2":
+#   ~=X.Y   at least X.Y, below the next major release (pipInstall2 reads it as >=X.Y)
+#   >=X.Y   at least X.Y
+fastapi~=0.115
+httpx~=0.27
+# OpenCV needs numpy. Below 4.12, OpenCV works with numpy 1 or 2, so the Raspberry Pi OS numpy is kept - the
+# python3-picamera2 package is built for it (numpy 1 on Bookworm, 2 on Trixie). 4.12 and later need numpy 2.
 numpy
-opencv-python-headless
-pydantic
-starlette
-uvicorn[standard]
+opencv-python-headless<4.12
+pydantic~=2.7
+uvicorn[standard]~=0.29

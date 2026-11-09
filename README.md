@@ -51,9 +51,9 @@ Before the first start as a standalone you may need to install the following:
 - **Linux:** Python 3 with venv (`sudo apt install python3-venv`) and
   `v4l-utils` for USB cameras (`sudo apt install v4l-utils`). For Pi cameras,
   `python3-picamera2` (already on Raspberry Pi OS).
-- **Windows:** Python 3.12 or later from [python.org](https://www.python.org/downloads/),
-  with **Add python.exe to PATH** ticked (multiCam needs 3.12 or later
-  everywhere; Raspberry Pi OS 13 has 3.13).
+- **Windows:** Python 3.10 or later from [python.org](https://www.python.org/downloads/),
+  with **Add python.exe to PATH** ticked (multiCam needs 3.10 or later
+  everywhere; Raspberry Pi OS 12 "Bookworm" has 3.11, Raspberry Pi OS 13 has 3.13).
 
 In a standalone install:
 

@@ -1400,7 +1400,7 @@ def configure_cameras(installed_cameras, camera_list, requested_options):
         failed_cameras = set()
         for name, details in camera_list.items():
             if (details['source'] not in installed_cameras) and (details['cameratype'] != 'STREAM'):
-                logger.warning(f'Camera source {details['source']} is not installed')
+                logger.warning(f'Camera source {details["source"]} is not installed')
                 continue
 
             try:
@@ -1454,10 +1454,10 @@ def configure_cameras(installed_cameras, camera_list, requested_options):
                     logger.debug(f'Skipping camera controls for stream {name}')
 
                 else:
-                    logger.warning(f'Unrecognized camera type {details['cameratype']}')
+                    logger.warning(f'Unrecognized camera type {details["cameratype"]}')
                     continue
             except Exception as e:
-                logger.warning(f'[{name}] Could not set up camera {details['source']}; skipping it\nIs it being used by another process?.\nError reported was - {e}')
+                logger.warning(f'[{name}] Could not set up camera {details["source"]}; skipping it\nIs it being used by another process?.\nError reported was - {e}')
                 failed_cameras.add(name)
                 continue
             '''
@@ -1472,11 +1472,11 @@ def configure_cameras(installed_cameras, camera_list, requested_options):
         for camera, details in list(camera_list.items()):
             if (details['source'] not in installed_cameras) and (details['cameratype'] != 'STREAM'):
                 camera_list.pop(camera)
-                logger.debug(f'Camera {camera} with source {details['source']} removed')
+                logger.debug(f'Camera {camera} with source {details["source"]} removed')
                 continue
             if camera in failed_cameras:
                 camera_list.pop(camera)
-                logger.debug(f'Camera {camera} with source {details['source']} removed')
+                logger.debug(f'Camera {camera} with source {details["source"]} removed')
                 continue
 
             # Validate this camera's format, resolution, and fps.
@@ -1488,7 +1488,7 @@ def configure_cameras(installed_cameras, camera_list, requested_options):
                     validated_camera = validate_pi_camera_configs({camera: details}, applied_options)
                     camera_list[camera] = validated_camera[camera]
             except Exception as e:
-                logger.warning(f'[{camera}] Could not validate camera {details['source']}; skipping it - {e}')
+                logger.warning(f'[{camera}] Could not validate camera {details["source"]}; skipping it - {e}')
                 camera_list.pop(camera)
 
         camera_results = []

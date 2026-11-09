@@ -5,13 +5,11 @@ import threading
 import time
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, model_validator
-from starlette.requests import Request
-from starlette.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from defaults import (
     STATIC_DIR,
@@ -90,21 +88,21 @@ SNAPSHOT_TIMEOUT_SEC = 3.0
 app = FastAPI()
 
 
-class NoCacheStaticMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
+# Added before CORSMiddleware below, so (as before) CORS stays the outermost middleware
+@app.middleware("http")
+async def no_cache_static(request: Request, call_next):
+    response = await call_next(request)
 
-        if request.url.path.startswith("/static/assets/"):
-            # Built UI files have a content hash in their name, so they never change.
-            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-        elif request.url.path in ("/", "/index", "/settings", "/log") or request.url.path.startswith("/static/"):
-            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-            response.headers["Pragma"] = "no-cache"
+    if request.url.path.startswith("/static/assets/"):
+        # Built UI files have a content hash in their name, so they never change.
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif request.url.path in ("/", "/index", "/settings", "/log") or request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
 
-        return response
+    return response
 
 
-app.add_middleware(NoCacheStaticMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
