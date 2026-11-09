@@ -158,6 +158,11 @@ cameras are running with. Open camera stream pages reconnect by themselves.
 The log level can be `INFO` (the default) or `DEBUG`. The log is written to
 `sys/multiCam/multiCam.log` (standalone: `dsf/multiCam.log`).
 
+The **Log** tab (`http://<SBC-IP>:<port>/log`) shows the logfile in the
+browser and follows it as it grows (**Follow** keeps the newest line in view;
+scrolling up pauses it). **Download** saves the whole file. After a restart it
+shows the new log. A very long log starts at its end - Download has all of it.
+
 The log shows the IP address and port in use, and the URLs of the camera
 streams page, the settings page and each camera's stream and snapshot. See
 [Finding the IP address and port](#finding-the-ip-address-and-port).
@@ -403,8 +408,10 @@ non-MJPEG sources and rotated streams are decoded and re-encoded at
 
 ## User Interface
 
-Open `http://<SBC-IP>:<port>/` to view the configured cameras, and
-`http://<SBC-IP>:<port>/settings` to change them. Each camera also has these
+The pages have tabs across the top: **Camera Streams**
+(`http://<SBC-IP>:<port>/`) to view the configured cameras, **Settings**
+(`/settings`) to change them, and **Log** (`/log`) to see the logfile - see
+[Logging](#logging). Each camera also has these
 endpoints, where `<camera-name>` is URL-encoded when necessary:
 
 ```text

@@ -1,7 +1,7 @@
 // Builds the multiCam web interface into the plugin's static folder.
 //
 //   npm install      once, to install Vue / Vuetify / Vite
-//   npm run build    writes index.html, settings.html and assets/ to plugin3.x.x/dsf/static
+//   npm run build    writes index.html, settings.html, log.html and assets/ to plugin3.x.x/dsf/static
 //   npm run dev      live-reload server at http://localhost:5173/static/ - set MULTICAM_URL
 //                    to a running multiCam (default http://localhost:17800) for the API and streams
 //
@@ -29,6 +29,7 @@ export default defineConfig({
 			input: {
 				index: fileURLToPath(new URL("index.html", import.meta.url)),
 				settings: fileURLToPath(new URL("settings.html", import.meta.url)),
+				log: fileURLToPath(new URL("log.html", import.meta.url)),
 			},
 		},
 	},

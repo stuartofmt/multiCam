@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import threading
 import time
@@ -96,7 +97,7 @@ class NoCacheStaticMiddleware(BaseHTTPMiddleware):
         if request.url.path.startswith("/static/assets/"):
             # Built UI files have a content hash in their name, so they never change.
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-        elif request.url.path in ("/", "/index", "/settings") or request.url.path.startswith("/static/"):
+        elif request.url.path in ("/", "/index", "/settings", "/log") or request.url.path.startswith("/static/"):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
             response.headers["Pragma"] = "no-cache"
 
@@ -205,6 +206,72 @@ async def root():
 @app.get("/settings")
 async def settings_page():
     return FileResponse(STATIC_DIR / "settings.html")
+
+
+@app.get("/log")
+async def log_page():
+    return FileResponse(STATIC_DIR / "log.html")
+
+
+# The most of the logfile sent at once: the log page starts with the end of a long log, then follows it
+LOG_CHUNK_BYTES = 512 * 1024
+
+
+def current_logfile():
+    """The file the log is being written to: the logfile, or the startup log until multiCam has switched to it
+    (or if it could not). None if there is neither."""
+    logger = getattr(logger_module, "logger", None)
+    files = [h.baseFilename for h in getattr(logger, "handlers", []) if isinstance(h, logging.FileHandler)]
+    return files[-1] if files else None
+
+
+@app.get("/api/log")
+async def get_log(offset: Optional[int] = None):
+    """
+    The log's text from byte offset on (at most LOG_CHUNK_BYTES), with the offset to ask for next time. With no
+    offset, the end of the log. An offset past the end means the log was started again (multiCam restarted): it
+    is then sent from the beginning, with "restarted": true.
+    """
+    path = current_logfile()
+    if path is None or not os.path.isfile(path):
+        return JSONResponse({"status": "error", "message": "There is no logfile yet"}, status_code=404)
+    size = os.path.getsize(path)
+    restarted = offset is not None and offset > size
+    if offset is None:
+        start = max(0, size - LOG_CHUNK_BYTES)
+    elif restarted:
+        start = 0
+    else:
+        start = max(0, offset)
+    with open(path, "rb") as f:
+        f.seek(start)
+        data = f.read(LOG_CHUNK_BYTES)
+    if len(data) == LOG_CHUNK_BYTES and b"\n" in data:
+        # A full chunk: up to its last whole line, the rest next time
+        data = data[:data.rfind(b"\n") + 1]
+    end = start + len(data)   # where the next request carries on
+    if offset is None and start > 0:
+        # Started part way through: from the next whole line
+        newline = data.find(b"\n")
+        data = data[newline + 1:] if newline >= 0 else b""
+    return {
+        "status": "success",
+        "path": path,
+        "size": size,
+        "offset": end,
+        "truncated": offset is None and start > 0,   # the beginning of the log is not shown
+        "restarted": restarted,
+        "text": data.decode("utf-8", errors="replace"),
+    }
+
+
+@app.get("/api/log/download")
+async def download_log():
+    """The whole logfile, as a file to save."""
+    path = current_logfile()
+    if path is None or not os.path.isfile(path):
+        return JSONResponse({"status": "error", "message": "There is no logfile yet"}, status_code=404)
+    return FileResponse(path, media_type="text/plain", filename=os.path.basename(path))
 
 
 @app.get("/api/settings")

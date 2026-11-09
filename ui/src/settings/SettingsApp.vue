@@ -1,10 +1,11 @@
 <script setup>
 // Settings page: edits the cameras, port and log level kept in multiCam's settings file.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { mdiArrowLeft, mdiContentSave, mdiPlus, mdiPower, mdiRestart, mdiUndo, mdiVideoOff } from "@mdi/js";
+import { mdiContentSave, mdiPlus, mdiPower, mdiRestart, mdiUndo, mdiVideoOff } from "@mdi/js";
 import { getSettings, restart, saveSettings, terminate } from "../api.js";
 import { keysFor, sortByName, unusedSource } from "./cameraLogic.js";
 import CameraCard from "./CameraCard.vue";
+import NavTabs from "../NavTabs.vue";
 
 // Server response from GET /api/settings
 const settings = ref(null);
@@ -275,9 +276,8 @@ onBeforeUnmount(() => {
 <template>
 	<v-app>
 		<v-app-bar flat border="b">
-			<v-app-bar-title>Camera Settings</v-app-bar-title>
+			<NavTabs current="settings" />
 			<template #append>
-				<v-btn href="/" :prepend-icon="mdiArrowLeft" variant="tonal">Camera Streams</v-btn>
 				<v-btn v-if="settings && !settings.plugin" class="ml-2" color="error" variant="tonal"
 					   :prepend-icon="mdiPower" :disabled="terminated" @click="terminateProgram">Terminate</v-btn>
 			</template>

@@ -1,8 +1,9 @@
 <script setup>
 // Camera streams page: shows every running camera's MJPEG stream with its stream and snapshot links.
 import { onBeforeUnmount, onMounted, ref } from "vue";
-import { mdiCog, mdiVideoOff } from "@mdi/js";
+import { mdiVideoOff } from "@mdi/js";
 import { getCameras } from "../api.js";
+import NavTabs from "../NavTabs.vue";
 
 // Browsers allow only ~6 connections per host, and each <img> stream holds one open.
 // The streams are released while this tab is hidden so links opened in other tabs can connect.
@@ -119,10 +120,7 @@ onBeforeUnmount(() => {
 <template>
 	<v-app>
 		<v-app-bar flat border="b">
-			<v-app-bar-title>Camera Streams</v-app-bar-title>
-			<template #append>
-				<v-btn href="/settings" :prepend-icon="mdiCog" variant="tonal">Settings</v-btn>
-			</template>
+			<NavTabs current="streams" />
 		</v-app-bar>
 
 		<v-main>

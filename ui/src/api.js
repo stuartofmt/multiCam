@@ -39,3 +39,8 @@ export function restart() {
 export function terminate() {
 	return request("/api/terminate", { method: "POST" });
 }
+
+// The log's text from byte offset on (with none, the end of the log) - see /api/log
+export function getLog(offset) {
+	return request(offset === undefined ? "/api/log" : `/api/log?offset=${offset}`);
+}
