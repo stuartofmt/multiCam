@@ -30,7 +30,7 @@ from routes import app, start_cameras, stop_cameras, set_settings_state, set_res
 from camera_platform import IS_WINDOWS
 from settings_config import ensure_settings_file
 
-from logger_module import (setup_log, set_log_level)
+from logger_module import (setup_console_logger, setup_log, set_log_level)
 
 
 def port_in_use(ip_address, port):
@@ -176,26 +176,23 @@ if __name__ == "__main__":
     progName = os.path.splitext(os.path.basename(sys.argv[0]))[0]
     progVersion = '1.0.0'
 
+    # The console and <program name>.startup.log until the startup checks are done - then the logfile
+    logger = setup_console_logger(progName)
+    logger.info(f'''{progName} -- {progVersion}''')
+
     LOGFILENAME = Path(sys.argv[1]) if len(sys.argv) > 1 else default_folder() / "multiCam.log"
     #  The settings file is kept in the same folder as the logfile
     SETTINGSFILENAME = LOGFILENAME.parent / 'settings.config'
-    print(f'{SETTINGSFILENAME=}')
+    logger.info(f'Settings and log folder: {LOGFILENAME.parent}')
+    for note in _folder_notes:
+        logger.info(note)
     #  Create the settings file (and folder), or replace it if it fails the checksum
     try:
         settings_message = ensure_settings_file(SETTINGSFILENAME)
     except Exception as e:
-        print(f'Could not create settings file {SETTINGSFILENAME}: {e}')
-        sys.exit(1)
+        logger.critical(f'Could not create settings file {SETTINGSFILENAME}: {e}')
+        force_quit(1)
 
-    if not setup_log(progName, LOGFILENAME):
-        logger.error(f"Failed to setup logging to {LOGFILENAME}. Please ensure the file is writable.")
-        sys.exit(1)
-
-    from logger_module import logger  # Need to import after setup_logging is called
-    logger.info(f'''Log file for {progName} -- {progVersion}''')
-    logger.info(f'Settings and log folder: {LOGFILENAME.parent}')
-    for note in _folder_notes:
-        logger.info(note)
     if settings_message:
         logger.info(settings_message)
 
@@ -205,7 +202,7 @@ if __name__ == "__main__":
     try:
         # Get port from settings file
         PORT = get_port(SETTINGSFILENAME)
-        print(f'{PORT=}')
+        logger.info(f'Port from the settings file: {PORT}')
         this_ip_address, PORT = validate_port(PORT)
     except Exception as e:
         logger.info(f'{e}')
@@ -227,6 +224,11 @@ if __name__ == "__main__":
         configured_cameras = configure_cameras(installed_cameras, cameras_to_use, cameras_to_use_configs)
     except Exception as e:
         logger.info(f'{e}')
+        force_quit(1)
+
+    # The startup checks are done: from here on, the logfile (which starts with the startup log)
+    if not setup_log(progName, LOGFILENAME):
+        logger.error(f"Failed to setup logging to {LOGFILENAME}. Please ensure the file is writable.")
         force_quit(1)
 
     # The settings page can restart multiCam to apply saved settings
