@@ -12,5 +12,5 @@
 	"sbcOutputRedirected": false,
 	"sbcPermissions": ["networkAccess", "webcamAccess", "fileSystemAccess"],
 	"sbcPackageDependencies": ["python3", "python3-libcamera", "python3-picamera2","v4l-utils","ffmpeg"],
-	"sbcPythonDependencies": ["--verbose","--python>=3.10","requirements.txt1","requirements-linux.txt"]
+	"sbcPythonDependencies": ["--verbose","--python>=3.10","requirements1.txt","requirements-linux.txt"]
  }
