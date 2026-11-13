@@ -1,0 +1,52 @@
+# What pip installs on every platform, for Python 3.10 or later, in one section per Python version: every line
+# in a section has the same marker, so exactly one section applies. Each package's range runs from the oldest
+# release known to work on that Python (packages with compiled parts have no build for a newer Python in their
+# older releases) to below its next major release. pip and pipInstall2 (2.3.0 or later) both accept this file.
+#
+# OpenCV needs numpy, and python3-picamera2 loads python3-simplejpeg, which is built for the Raspberry Pi OS numpy -
+# so that numpy has to be kept. 4.10.0.84 and 4.11 work with numpy 1 or 2 (older ones only with numpy 1); 4.12 and
+# later (OpenCV 5 included) need numpy 2.
+#   Python 3.11 (Bookworm, numpy 1.24): OpenCV below 4.12, so the numpy 1 its simplejpeg is built for is kept
+#   Python 3.12 and later (Trixie: 3.13, numpy 2.2): OpenCV 5 - the Raspberry Pi OS numpy 2 meets it and is kept
+#   Python 3.10 (no Raspberry Pi OS release): OpenCV below 4.12
+
+# ---------- Python 3.10 ----------
+fastapi>=0.115,<1; python_version == "3.10"
+httpx>=0.27,<1; python_version == "3.10"
+uvicorn[standard]>=0.29,<1; python_version == "3.10"
+pydantic>=2.7,<3; python_version == "3.10"
+opencv-python-headless>=4.10.0.84,<4.12; python_version == "3.10"
+numpy>=1.21.3,<3; python_version == "3.10"
+
+# ---------- Python 3.11 (Raspberry Pi OS Bookworm) ----------
+fastapi>=0.115,<1; python_version == "3.11"
+httpx>=0.27,<1; python_version == "3.11"
+uvicorn[standard]>=0.29,<1; python_version == "3.11"
+pydantic>=2.7,<3; python_version == "3.11"
+opencv-python-headless>=4.10.0.84,<4.12; python_version == "3.11"
+# 1.23.5: the oldest OpenCV 4.11 accepts on Python 3.11 (Bookworm's numpy is 1.24)
+numpy>=1.23.5,<3; python_version == "3.11"
+
+# ---------- Python 3.12 ----------
+fastapi>=0.115,<1; python_version == "3.12"
+httpx>=0.27,<1; python_version == "3.12"
+uvicorn[standard]>=0.29,<1; python_version == "3.12"
+pydantic>=2.7,<3; python_version == "3.12"
+opencv-python-headless>=4.10.0.84,<6; python_version == "3.12"
+numpy>=1.26,<3; python_version == "3.12"
+
+# ---------- Python 3.13 (Raspberry Pi OS Trixie) ----------
+fastapi>=0.115,<1; python_version == "3.13"
+httpx>=0.27,<1; python_version == "3.13"
+uvicorn[standard]>=0.29,<1; python_version == "3.13"
+pydantic>=2.8,<3; python_version == "3.13"
+opencv-python-headless>=4.10.0.84,<6; python_version == "3.13"
+numpy>=2.1,<3; python_version == "3.13"
+
+# ---------- Python 3.14 and later ----------
+fastapi>=0.115,<1; python_version >= "3.14"
+httpx>=0.27,<1; python_version >= "3.14"
+uvicorn[standard]>=0.29,<1; python_version >= "3.14"
+pydantic>=2.12,<3; python_version >= "3.14"
+opencv-python-headless>=4.10.0.84,<6; python_version >= "3.14"
+numpy>=2.3.2,<3; python_version >= "3.14"

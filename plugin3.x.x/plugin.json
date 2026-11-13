@@ -2,7 +2,7 @@
     "id": "multiCam",
     "name": "multiCam",
     "author": "Stuartofmt",
-    "version": "1.6.0",
+    "version": "1.7.0-beta.1",
     "license": "GPL-2.0-or-later",
     "homepage": "https://github.com/stuartofmt",
 	"sbcRequired": true,
@@ -12,5 +12,5 @@
 	"sbcOutputRedirected": false,
 	"sbcPermissions": ["networkAccess", "webcamAccess", "fileSystemAccess"],
 	"sbcPackageDependencies": ["python3", "python3-libcamera", "python3-picamera2","v4l-utils","ffmpeg"],
-	"sbcPythonDependencies": ["--verbose","requirements.txt","requirements-linux.txt"]
+	"sbcPythonDependencies": ["--verbose","--python>=3.10","requirements.txt1","requirements-linux.txt"]
  }
