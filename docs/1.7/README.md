@@ -165,6 +165,8 @@ browser and follows it as it grows (**Follow** keeps the newest line in view;
 scrolling up pauses it). **Download** saves the whole file. After a restart it
 shows the new log. A very long log starts at its end - Download has all of it.
 
+![Log page](images/log.png)
+
 The log shows the IP address and port in use, and the URLs of the camera
 streams page, the settings page and each camera's stream and snapshot. See
 [Finding the IP address and port](#finding-the-ip-address-and-port).
