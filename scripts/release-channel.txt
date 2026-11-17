@@ -1,2 +1,0 @@
-# Release channel for this branch: "latest" or "maintenance" (see plugin-release.yml.md in DWC-Tools).
-latest

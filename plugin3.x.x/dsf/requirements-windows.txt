@@ -1,5 +1,0 @@
-# Installed as well as requirements.txt on Windows only (run.bat).
-# Camera names, formats and control ranges through DirectShow (windows_cameras.py)
-comtypes~=1.2
-# Exactly this release: windows_cameras.py uses its DirectShow definitions, which are not a public API
-pygrabber==0.2

@@ -1,37 +1,7 @@
-venv/
-__pycache__/
-*.pye
-success
-failure
-build
-*.egg-info
-!.github
-*.pte
-data/
-.vscode/
-.DS_Store
-not-in-use/
-*.sh
-multiCam.config
-multiCam.log
-settings.config.bak
-settings.config
+# Branches checked out as worktrees in subfolders (e.g. 3.7.x/) are listed in .git/info/exclude
+**/venv/
 *.log
-callgraph
-callgraph.png
-call_graph_pyan.py
-x*.py
-*.copy
-*.claude
-
-# The release script (scripts/release.sh) is needed - *.sh above would ignore it
-!scripts/release.sh
-
-# Web interface build tooling (ui/) - the built files in plugin3.x.x/dsf/static are committed
-node_modules/
-
-# Standalone ZIP built locally by scripts/release-standalone.mjs
-standalone/*.zip
-
-# Standalone ZIP: commit the launchers, not the ZIPs built locally (added by Prep_and_Package)
-!standalone/run.sh
+.vscode/
+.claude/
+.idea
+.DS_Store
